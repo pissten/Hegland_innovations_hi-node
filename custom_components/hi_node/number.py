@@ -1,0 +1,77 @@
+"""Marginer og temperaturgrense. Samme tall som på Væmt når anlegget opprettes."""
+
+from homeassistant.components.number import NumberEntity, NumberMode
+
+from .const import DOMAIN, ROLES
+from .entity import HiEntity
+
+_MARGIN_NAMES = {
+    ("oven", 0): ("Ovn før", 180),
+    ("oven", 1): ("Ovn etter", 180),
+    ("door", 0): ("Dør før", 60),
+    ("door", 1): ("Dør etter", 60),
+    ("light", 0): ("Lys før", 60),
+    ("light", 1): ("Lys etter", 60),
+}
+
+
+async def async_setup_entry(hass, entry, async_add_entities):
+    runtime = hass.data[DOMAIN][entry.entry_id]
+    entities = []
+    for role in ROLES:
+        for index in (0, 1):
+            name, limit = _MARGIN_NAMES[(role, index)]
+            entities.append(MarginNumber(runtime, role, index, name, limit))
+    entities.append(PlainNumber(runtime, "frost_c", "Frostvakt temperatur", 5, 30, 0.5, "°C"))
+    entities.append(
+        PlainNumber(runtime, "grunnvarme_hours_per_day", "Grunnvarme timer per dag", 0, 24, 0.5, "h")
+    )
+    async_add_entities(entities)
+
+
+class MarginNumber(HiEntity, NumberEntity):
+    """Minutter før eller etter en booking."""
+
+    _attr_mode = NumberMode.BOX
+    _attr_native_step = 1
+    _attr_native_min_value = 0
+    _attr_native_unit_of_measurement = "min"
+
+    def __init__(self, runtime, role: str, index: int, name: str, limit: int) -> None:
+        side = "pre" if index == 0 else "post"
+        super().__init__(runtime, f"margin_{role}_{side}", name)
+        self._role = role
+        self._index = index
+        self._attr_native_max_value = limit
+
+    @property
+    def native_value(self):
+        return self.runtime.data["margins"][self._role][self._index]
+
+    async def async_set_native_value(self, value: float) -> None:
+        current = list(self.runtime.data["margins"][self._role])
+        current[self._index] = int(value)
+        self.runtime.data["margins"][self._role] = current
+        await self.runtime.async_apply_now()
+
+
+class PlainNumber(HiEntity, NumberEntity):
+    """Ett tall som ligger rett i lageret."""
+
+    _attr_mode = NumberMode.BOX
+
+    def __init__(self, runtime, key: str, name: str, low: float, high: float, step: float, unit: str) -> None:
+        super().__init__(runtime, key, name)
+        self._key = key
+        self._attr_native_min_value = low
+        self._attr_native_max_value = high
+        self._attr_native_step = step
+        self._attr_native_unit_of_measurement = unit
+
+    @property
+    def native_value(self):
+        return self.runtime.data.get(self._key)
+
+    async def async_set_native_value(self, value: float) -> None:
+        self.runtime.data[self._key] = float(value)
+        await self.runtime.async_apply_now()

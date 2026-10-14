@@ -1,0 +1,23 @@
+profiles:
+  - id: existing_switches
+    name: Eksisterende brytere
+    writes_firmware: false
+  - id: hkl_er6
+    name: HKL-ER6
+    writes_firmware: true
+    roles:
+      oven: output1
+      door: output2
+      light: output3
+    network:
+      priority:
+        - ethernet
+        - wifi
+      ethernet:
+        type: W5500
+        clk_pin: GPIO13
+        mosi_pin: GPIO11
+        miso_pin: GPIO12
+        cs_pin: GPIO14
+        interrupt_pin: GPIO10
+        reset_pin: GPIO9

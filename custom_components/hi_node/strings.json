@@ -1,0 +1,83 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Anlegg",
+        "description": "Navn på anlegget, iCal-adressen fra HI Booking og adressen til GET /health.",
+        "data": {
+          "name": "Anleggsnavn",
+          "ical_url": "iCal-adresse",
+          "health_url": "Helse-adresse"
+        }
+      },
+      "io": {
+        "title": "I/O",
+        "description": "Velg kort. Eksisterende brytere bruker det som allerede finnes. HKL-ER6 lager et nytt ESPHome-oppsett.",
+        "data": {
+          "profile": "Kort"
+        }
+      },
+      "switches": {
+        "title": "Eksisterende brytere",
+        "description": "Velg ovn, dør og lys. Ingen ny firmware skrives.",
+        "data": {
+          "oven": "Ovn",
+          "door": "Dør",
+          "light": "Lys",
+          "temperature_entity": "Temperatursensor"
+        }
+      },
+      "hkl_er6": {
+        "title": "HKL-ER6",
+        "description": "Kortet bruker LAN (W5500) først og WiFi bare hvis kabelen ikke svarer. La adressene stå tomme for DHCP. Fast adresse krever IP, gateway og nettmaske.",
+        "data": {
+          "static_ip": "Fast IP",
+          "gateway": "Gateway",
+          "subnet": "Nettmaske",
+          "temperature_entity": "Temperatursensor",
+          "dashboard_url": "ESPHome-dashboard"
+        }
+      }
+    },
+    "error": {
+      "url": "Adressen må starte med http:// eller https://",
+      "ip": "Fast LAN-adresse trenger IP, gateway og nettmaske",
+      "switches": "Ovn, dør og lys må velges"
+    },
+    "abort": {
+      "already_configured": "Anlegget er allerede lagt inn"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Legg til kort",
+        "description": "Samme liste som ved første oppsett. Hvert kort får eget enhetsnavn.",
+        "data": {
+          "profile": "Kort"
+        }
+      },
+      "switches": {
+        "title": "Eksisterende brytere",
+        "data": {
+          "oven": "Ovn",
+          "door": "Dør",
+          "light": "Lys"
+        }
+      },
+      "hkl_er6": {
+        "title": "HKL-ER6",
+        "description": "LAN (W5500) er første valg. WiFi er reserve.",
+        "data": {
+          "static_ip": "Fast IP",
+          "gateway": "Gateway",
+          "subnet": "Nettmaske"
+        }
+      }
+    },
+    "error": {
+      "ip": "Fast LAN-adresse trenger IP, gateway og nettmaske",
+      "switches": "Ovn, dør og lys må velges"
+    }
+  }
+}
