@@ -91,11 +91,91 @@ def decide(state: RoleState, now: datetime) -> Decision:
     return Decision(oven, door, light, mode, reason)
 
 
+_MONTHS = (
+    "",
+    "jan.",
+    "feb.",
+    "mars",
+    "apr.",
+    "mai",
+    "juni",
+    "juli",
+    "aug.",
+    "sep.",
+    "okt.",
+    "nov.",
+    "des.",
+)
+
+
+def booking_event(
+    now: datetime,
+    events: list[tuple[datetime, datetime]],
+    pre_min: int,
+    post_min: int,
+) -> tuple[datetime, datetime] | None:
+    """Bookingen som gjør at ovnen skal kjøre nå (start og slutt)."""
+    pre = timedelta(minutes=int(pre_min))
+    post = timedelta(minutes=int(post_min))
+    covering: list[tuple[datetime, datetime]] = []
+    upcoming: list[tuple[datetime, datetime]] = []
+    for start, end in events:
+        if start - pre <= now <= end + post:
+            covering.append((start, end))
+        elif start > now:
+            upcoming.append((start, end))
+    if covering:
+        started = [pair for pair in covering if pair[0] <= now]
+        return max(started, key=lambda pair: pair[0]) if started else min(covering, key=lambda pair: pair[0])
+    if upcoming:
+        return min(upcoming, key=lambda pair: pair[0])
+    return None
+
+
+def booking_start(
+    now: datetime,
+    events: list[tuple[datetime, datetime]],
+    pre_min: int,
+    post_min: int,
+) -> datetime | None:
+    """Starten på bookingen som gjør at ovnen skal kjøre nå."""
+    event = booking_event(now, events, pre_min, post_min)
+    return None if event is None else event[0]
+
+
+def oven_status(
+    reason: str,
+    start: datetime | None,
+    now: datetime,
+    duration_min: int | None = None,
+) -> str:
+    """Tekst til status-sensoren under ovnen."""
+    if reason == "booking":
+        if start is None:
+            return "Booking"
+        shown = start.astimezone(now.tzinfo) if now.tzinfo and start.tzinfo else start
+        when = f"{shown.day}. {_MONTHS[shown.month]} kl. {shown:%H:%M}"
+        if shown.year != now.year:
+            when = f"{shown.day}. {_MONTHS[shown.month]} {shown.year} kl. {shown:%H:%M}"
+        if duration_min is not None and duration_min > 0:
+            return f"Booking {when} ({int(duration_min)} min)"
+        return f"Booking {when}"
+    return {
+        "frostvakt": "Frostvakt",
+        "grunnvarme": "Grunnvarme",
+        "manual_override": "Manuell",
+        "heater_12h": "12-timers pause",
+        "default_off": "Av",
+    }.get(reason, "Av")
+
+
 def _source_on(state: RoleState, role: str, now: datetime) -> bool:
+    """Kalenderen med før/etter gjelder alltid. Webhook kan i tillegg slå på."""
+    pre, post = state.margins[role]
+    in_window = in_margin_window(now, state.events, int(pre), int(post))
     if state.fallback:
-        pre, post = state.margins[role]
-        return in_margin_window(now, state.events, int(pre), int(post))
-    return bool(state.commands.get(role, False))
+        return in_window
+    return bool(state.commands.get(role, False)) or in_window
 
 
 def _grunnvarme(state: RoleState, now: datetime, source_oven: bool) -> bool:

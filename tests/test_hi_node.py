@@ -10,7 +10,26 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "custom_components"))
 
-from hi_node.brain import RoleState, decide, parse_command  # noqa: E402
+from hi_node.brain import (  # noqa: E402
+    RoleState,
+    booking_event,
+    booking_start,
+    decide,
+    oven_status,
+    parse_command,
+)
+from hi_node.availability import (  # noqa: E402
+    availability_url,
+    duration_minutes_for,
+    format_closed_until,
+    parse_availability_document,
+)
+from hi_node.margins import (  # noqa: E402
+    apply_remote_margins,
+    margin_sync_action,
+    margins_url,
+    parse_margin_document,
+)
 from hi_node.calendar_feed import in_margin_window, parse_ical  # noqa: E402
 from hi_node.dashboard import compile_message  # noqa: E402
 from hi_node.health import HealthTracker  # noqa: E402
@@ -91,13 +110,13 @@ class BrainTests(unittest.TestCase):
         self.assertEqual(decision.reason, "booking")
         self.assertNotIn("output4", decision.as_roles())
 
-    def test_ical_is_ignored_until_fallback(self):
-        start = T0 - timedelta(minutes=10)
-        end = T0 + timedelta(minutes=50)
+    def test_post_margin_holds_after_the_booking_ends(self):
+        start = T0 - timedelta(hours=1)
+        end = T0 - timedelta(minutes=5)
         decision = decide(_state(events=[(start, end)]), T0)
         self.assertFalse(decision.oven)
-        self.assertFalse(decision.door)
-        self.assertFalse(decision.light)
+        self.assertTrue(decision.door)
+        self.assertTrue(decision.light)
 
     def test_fallback_uses_vaemt_margins(self):
         start = T0 + timedelta(minutes=60)
@@ -165,6 +184,114 @@ class BrainTests(unittest.TestCase):
         self.assertFalse(decision.oven)
         self.assertTrue(decision.door)
         self.assertEqual(decision.reason, "heater_12h")
+
+    def test_oven_status_names_the_cause(self):
+        start = datetime(2026, 10, 16, 18, 0, tzinfo=OSLO)
+        self.assertEqual(oven_status("frostvakt", None, T0), "Frostvakt")
+        self.assertEqual(oven_status("grunnvarme", None, T0), "Grunnvarme")
+        self.assertEqual(oven_status("default_off", None, T0), "Av")
+        self.assertEqual(
+            oven_status("booking", start, T0),
+            "Booking 16. okt. kl. 18:00",
+        )
+        self.assertEqual(
+            oven_status("booking", start, T0, duration_min=60),
+            "Booking 16. okt. kl. 18:00 (60 min)",
+        )
+        self.assertEqual(oven_status("booking", None, T0), "Booking")
+
+    def test_booking_start_uses_the_covering_event(self):
+        earlier = T0 - timedelta(hours=3)
+        current = T0 + timedelta(minutes=30)
+        later = T0 + timedelta(hours=5)
+        events = [
+            (earlier, earlier + timedelta(hours=1)),
+            (current, current + timedelta(hours=1)),
+            (later, later + timedelta(hours=1)),
+        ]
+        self.assertEqual(booking_start(T0, events, 90, 0), current)
+        self.assertEqual(
+            booking_event(T0, events, 90, 0),
+            (current, current + timedelta(hours=1)),
+        )
+
+
+class AvailabilityTests(unittest.TestCase):
+    def test_url_keeps_slug_and_token(self):
+        url = availability_url(
+            "http://10.200.10.6:8787/calendar?slug=badstue&token=vaemt-kalender"
+        )
+        self.assertEqual(
+            url,
+            "http://10.200.10.6:8787/node/availability?slug=badstue&token=vaemt-kalender",
+        )
+
+    def test_rest_of_day_is_until_midnight(self):
+        minutes = duration_minutes_for("rest", T0)
+        self.assertEqual(minutes, 11 * 60 + 59)
+
+    def test_document_and_closed_until(self):
+        parsed = parse_availability_document(
+            {
+                "active": True,
+                "startsAt": "2026-10-26T10:00:00+01:00",
+                "endsAt": "2026-10-26T14:00:00+01:00",
+                "blockId": "abc",
+                "durationMinutes": 240,
+            }
+        )
+        self.assertTrue(parsed["active"])
+        self.assertEqual(parsed["duration_minutes"], 240)
+        self.assertEqual(
+            format_closed_until(
+                parsed["ends_at"],
+                datetime(2026, 10, 26, 12, 0, tzinfo=OSLO),
+            ),
+            "Stengt til 15:00",
+        )
+        self.assertEqual(format_closed_until(None, T0), "Åpen")
+
+
+class MarginSyncTests(unittest.TestCase):
+    def test_url_keeps_slug_and_token(self):
+        url = margins_url(
+            "http://10.200.10.6:8787/calendar?slug=badstue&token=vaemt-kalender"
+        )
+        self.assertEqual(
+            url,
+            "http://10.200.10.6:8787/node/margins?slug=badstue&token=vaemt-kalender",
+        )
+
+    def test_first_sync_pushes_the_node_values(self):
+        self.assertEqual(
+            margin_sync_action(seeded=False, dirty=False, seen_at=None, remote_at="newer"),
+            "push",
+        )
+        self.assertEqual(
+            margin_sync_action(seeded=True, dirty=True, seen_at="a", remote_at="a"),
+            "push",
+        )
+
+    def test_newer_booking_stamp_is_pulled(self):
+        self.assertEqual(
+            margin_sync_action(seeded=True, dirty=False, seen_at="a", remote_at="b"),
+            "pull",
+        )
+        self.assertEqual(
+            margin_sync_action(seeded=True, dirty=False, seen_at="a", remote_at="a"),
+            "idle",
+        )
+
+    def test_remote_document_updates_only_the_roles_it_names(self):
+        stamp, remote = parse_margin_document(
+            {"updatedAt": "2026-10-16T16:00:00.000Z", "margins": {"door": [5, 10], "light": [5, 80]}}
+        )
+        local = {"oven": [90, 0], "door": [5, 5], "light": [5, 5]}
+        self.assertEqual(stamp, "2026-10-16T16:00:00.000Z")
+        self.assertTrue(apply_remote_margins(local, remote))
+        self.assertEqual(local["oven"], [90, 0])
+        self.assertEqual(local["door"], [5, 10])
+        self.assertEqual(local["light"], [5, 60])
 
 
 class CommandTests(unittest.TestCase):

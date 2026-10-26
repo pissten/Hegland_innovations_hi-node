@@ -1,13 +1,34 @@
 """HI-node. Oppsettet lastes uten å trekke inn Home Assistant før noden starter."""
 
+import logging
+from pathlib import Path
+
 from .const import DOMAIN, PLATFORMS
 
 __all__ = ["DOMAIN", "PLATFORMS"]
 
+_LOGGER = logging.getLogger(__name__)
+_OVERVIEW_URL = "/hi_node_static/device-groups.js?v=5"
+
 
 async def async_setup(hass, config):
-    """Integrasjonen startes bare fra oppsettsflyten."""
+    """Registrer visningen som deler enhetssiden i Dør, Lys og Ovn."""
+    await _async_register_overview(hass)
     return True
+
+
+async def _async_register_overview(hass) -> None:
+    from homeassistant.components.frontend import add_extra_js_url
+    from homeassistant.components.http import StaticPathConfig
+
+    folder = Path(__file__).parent / "frontend"
+    try:
+        await hass.http.async_register_static_paths(
+            [StaticPathConfig("/hi_node_static", str(folder), False)]
+        )
+    except Exception:
+        _LOGGER.exception("Kunne ikke legge ut enhetsvisningen")
+    add_extra_js_url(hass, _OVERVIEW_URL)
 
 
 async def async_setup_entry(hass, entry):
@@ -23,6 +44,7 @@ async def async_setup_entry(hass, entry):
         hass.data[DOMAIN].pop(entry.entry_id, None)
         raise
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await runtime.async_drop_group_devices()
     return True
 
 

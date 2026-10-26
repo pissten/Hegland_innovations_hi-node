@@ -22,9 +22,11 @@ async def async_setup_entry(hass, entry, async_add_entities):
         for index in (0, 1):
             name, limit = _MARGIN_NAMES[(role, index)]
             entities.append(MarginNumber(runtime, role, index, name, limit))
-    entities.append(PlainNumber(runtime, "frost_c", "Frostvakt temperatur", 5, 30, 0.5, "°C"))
+    entities.append(PlainNumber(runtime, "frost_c", "Frostvakt temperatur", 5, 30, 0.5, "°C", "oven"))
     entities.append(
-        PlainNumber(runtime, "grunnvarme_hours_per_day", "Grunnvarme timer per dag", 0, 24, 0.5, "h")
+        PlainNumber(
+            runtime, "grunnvarme_hours_per_day", "Grunnvarme timer per dag", 0, 24, 0.5, "h", "oven"
+        )
     )
     async_add_entities(entities)
 
@@ -39,7 +41,7 @@ class MarginNumber(HiEntity, NumberEntity):
 
     def __init__(self, runtime, role: str, index: int, name: str, limit: int) -> None:
         side = "pre" if index == 0 else "post"
-        super().__init__(runtime, f"margin_{role}_{side}", name)
+        super().__init__(runtime, f"margin_{role}_{side}", name, group=role)
         self._role = role
         self._index = index
         self._attr_native_max_value = limit
@@ -52,6 +54,8 @@ class MarginNumber(HiEntity, NumberEntity):
         current = list(self.runtime.data["margins"][self._role])
         current[self._index] = int(value)
         self.runtime.data["margins"][self._role] = current
+        self.runtime.data["margins_dirty"] = True
+        await self.runtime.async_push_margins()
         await self.runtime.async_apply_now()
 
 
@@ -60,8 +64,10 @@ class PlainNumber(HiEntity, NumberEntity):
 
     _attr_mode = NumberMode.BOX
 
-    def __init__(self, runtime, key: str, name: str, low: float, high: float, step: float, unit: str) -> None:
-        super().__init__(runtime, key, name)
+    def __init__(
+        self, runtime, key: str, name: str, low: float, high: float, step: float, unit: str, group: str
+    ) -> None:
+        super().__init__(runtime, key, name, group=group)
         self._key = key
         self._attr_native_min_value = low
         self._attr_native_max_value = high

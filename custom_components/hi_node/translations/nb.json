@@ -5,7 +5,7 @@
         "title": "Anlegg",
         "description": "Navn på anlegget, iCal-adressen fra HI Booking og adressen til GET /health.",
         "data": {
-          "name": "Anleggsnavn",
+          "site_name": "Anleggsnavn",
           "ical_url": "iCal-adresse",
           "health_url": "Helse-adresse"
         }

@@ -3,7 +3,7 @@
   "name": "HI-node",
   "codeowners": [],
   "config_flow": true,
-  "dependencies": ["webhook"],
+  "dependencies": ["frontend", "webhook"],
   "documentation": "https://github.com/hegland-innovations/hi-node",
   "iot_class": "local_polling",
   "requirements": [],

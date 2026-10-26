@@ -114,7 +114,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=vol.Schema(
                 {
-                    vol.Required("name"): str,
+                    vol.Required("site_name"): str,
                     vol.Required("ical_url"): str,
                     vol.Required("health_url"): str,
                 }
@@ -182,14 +182,15 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def _async_create(self, user_input: dict):
-        slug = slugify(self._draft["name"])
+        site_name = self._draft["site_name"]
+        slug = slugify(site_name)
         await self.async_set_unique_id(slug)
         self._abort_if_unique_id_configured()
         module = build_module(self._draft["profile"], slug, 1, user_input)
         return self.async_create_entry(
-            title=self._draft["name"],
+            title=site_name,
             data={
-                "name": self._draft["name"],
+                "name": site_name,
                 "slug": slug,
                 "ical_url": self._draft["ical_url"].strip(),
                 "health_url": self._draft["health_url"].strip(),

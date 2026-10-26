@@ -14,9 +14,9 @@ async def async_setup_entry(hass, entry, async_add_entities):
     async_add_entities(
         [
             BookingOnline(runtime),
-            Desired(runtime, "oven", "Ovn skal kjøre"),
-            Desired(runtime, "door", "Dør skal være åpen"),
-            Desired(runtime, "light", "Lys skal være på"),
+            Desired(runtime, "oven", "Skal kjøre"),
+            Desired(runtime, "door", "Skal være åpen"),
+            Desired(runtime, "light", "Skal være på"),
         ]
     )
 
@@ -38,7 +38,7 @@ class Desired(HiEntity, BinarySensorEntity):
     """Ønsket tilstand etter webhook, iCal og de lokale sikringene."""
 
     def __init__(self, runtime, role: str, name: str) -> None:
-        super().__init__(runtime, f"desired_{role}", name)
+        super().__init__(runtime, f"desired_{role}", name, group=role)
         self._role = role
 
     @property

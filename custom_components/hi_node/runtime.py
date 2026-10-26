@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from datetime import timedelta
 from pathlib import Path
@@ -17,6 +18,19 @@ from homeassistant.util import dt as dt_util
 from .brain import RoleState, decide, parse_command
 from .calendar_feed import parse_ical
 from .const import DEFAULT_MARGINS, DOMAIN, RESET_HOLD_SECONDS, ROLES
+from .availability import (
+    DEFAULT_DURATION_KEY,
+    availability_url,
+    duration_minutes_for,
+    parse_availability_document,
+)
+from .margins import (
+    apply_remote_margins,
+    margin_payload,
+    margin_sync_action,
+    margins_url,
+    parse_margin_document,
+)
 from .dashboard import compile_message, dashboard_candidates
 from .health import HealthTracker
 from .profiles import profile_by_id, render_profile
@@ -42,6 +56,13 @@ def _blank_state() -> dict:
         "frost_c": 20,
         "oven_on_since": None,
         "reset_hold_until": None,
+        "margins_seen_at": None,
+        "margins_seeded": False,
+        "margins_dirty": False,
+        "booking_unavailable": False,
+        "booking_unavailable_until": None,
+        "booking_unavailable_starts": None,
+        "availability_duration": DEFAULT_DURATION_KEY,
     }
 
 
@@ -58,6 +79,9 @@ class HiNodeRuntime:
         self.webhook_id = f"{DOMAIN}_{entry.entry_id}"
         self._listeners: list = []
         self._unsubs: list = []
+        self._margin_lock = asyncio.Lock()
+        self._margin_missing_logged = False
+        self._availability_missing_logged = False
 
     def listen(self, update):
         self._listeners.append(update)
@@ -74,6 +98,22 @@ class HiNodeRuntime:
 
     def modules(self) -> list:
         return list(self.entry.data.get("modules") or [])
+
+    async def async_drop_group_devices(self) -> None:
+        """Fjern ovn, dør og lys som egne enheter etter at entitetene er flyttet tilbake."""
+        tasks = [task for task in list(getattr(self.entry, "_tasks", ())) if not task.done()]
+        if tasks:
+            await asyncio.wait(tasks)
+        from homeassistant.helpers import device_registry as dr
+
+        registry = dr.async_get(self.hass)
+        for group in ("oven", "door", "light"):
+            child = registry.async_get_child_device_by_identifier(
+                (DOMAIN, f"{self.entry.entry_id}_{group}"),
+                self.entry.entry_id,
+            )
+            if child is not None:
+                registry.async_remove_device(child.id)
 
     async def async_start(self) -> None:
         stored = await self.store.async_load()
@@ -115,6 +155,146 @@ class HiNodeRuntime:
     async def async_apply_now(self) -> None:
         await self._apply(dt_util.now())
 
+    async def async_persist(self) -> None:
+        """Lagre lokal tilstand uten ny beslutning."""
+        await self.store.async_save(self.data)
+        self._notify()
+
+    async def async_push_margins(self) -> None:
+        """Lokal endring av før/etter sendes til booking med en gang."""
+        async with self._margin_lock:
+            await self._push_margins()
+
+    def _apply_availability(self, document: dict) -> None:
+        parsed = parse_availability_document(document)
+        self.data["booking_unavailable"] = bool(parsed["active"])
+        self.data["booking_unavailable_until"] = parsed["ends_at"] if parsed["active"] else None
+        self.data["booking_unavailable_starts"] = parsed["starts_at"] if parsed["active"] else None
+
+    async def async_refresh_availability(self) -> None:
+        """Hent aktiv nød-stenging fra booking."""
+        document = await self._request_availability("get")
+        if document is None:
+            return
+        self._apply_availability(document)
+
+    async def async_set_unavailable(self, duration_minutes: int | None = None) -> bool:
+        """Sett badstuen utilgjengelig for booking."""
+        now = dt_util.now()
+        if duration_minutes is None:
+            duration_minutes = duration_minutes_for(self.data.get("availability_duration"), now)
+        document = await self._request_availability(
+            "put", {"durationMinutes": int(duration_minutes)}
+        )
+        if document is None:
+            _LOGGER.warning("Klarte ikke å stenge booking via /node/availability")
+            return False
+        self._apply_availability(document)
+        self._notify()
+        return True
+
+    async def async_clear_unavailable(self) -> bool:
+        """Fjern aktiv nød-stenging med en gang."""
+        document = await self._request_availability("delete")
+        if document is None:
+            _LOGGER.warning("Klarte ikke å åpne booking via /node/availability")
+            return False
+        self._apply_availability(document)
+        self._notify()
+        return True
+
+    async def _request_availability(self, method: str, payload: dict | None = None):
+        url = availability_url(self.entry.data.get("ical_url"))
+        if not url:
+            return None
+        session = async_get_clientsession(self.hass)
+        try:
+            async with asyncio.timeout(10):
+                if method == "put":
+                    response = await session.put(url, json=payload)
+                elif method == "delete":
+                    response = await session.delete(url)
+                else:
+                    response = await session.get(url)
+                text = await response.text()
+                if response.status == 404 and not self._availability_missing_logged:
+                    _LOGGER.warning(
+                        "Booking har ikke /node/availability ennå. Bygg booking på nytt."
+                    )
+                    self._availability_missing_logged = True
+                if response.status >= 300:
+                    return None
+                if not text:
+                    return {"active": False}
+                return json.loads(text)
+        except Exception:
+            _LOGGER.debug("Klarte ikke å synke tilgjengelighet", exc_info=True)
+            return None
+
+    async def _sync_margins(self) -> None:
+        try:
+            async with self._margin_lock:
+                seeded = bool(self.data.get("margins_seeded"))
+                dirty = bool(self.data.get("margins_dirty"))
+                if margin_sync_action(
+                    seeded=seeded,
+                    dirty=dirty,
+                    seen_at=self.data.get("margins_seen_at"),
+                    remote_at=None,
+                ) == "push":
+                    await self._push_margins()
+                    return
+                document = await self._request_margins("get")
+                if document is None:
+                    return
+                stamp, remote = parse_margin_document(document)
+                action = margin_sync_action(
+                    seeded=True,
+                    dirty=False,
+                    seen_at=self.data.get("margins_seen_at"),
+                    remote_at=stamp,
+                )
+                if action != "pull":
+                    return
+                apply_remote_margins(self.data["margins"], remote)
+                self.data["margins_seen_at"] = stamp
+                self.data["margins_dirty"] = False
+        except Exception:
+            _LOGGER.debug("Marginsynk feilet", exc_info=True)
+
+    async def _push_margins(self) -> None:
+        document = await self._request_margins("put", {"margins": margin_payload(self.data["margins"])})
+        if document is None:
+            return
+        stamp, remote = parse_margin_document(document)
+        if not stamp:
+            return
+        apply_remote_margins(self.data["margins"], remote)
+        self.data["margins_seen_at"] = stamp
+        self.data["margins_seeded"] = True
+        self.data["margins_dirty"] = False
+
+    async def _request_margins(self, method: str, payload: dict | None = None):
+        url = margins_url(self.entry.data.get("ical_url"))
+        if not url:
+            return None
+        session = async_get_clientsession(self.hass)
+        try:
+            async with asyncio.timeout(10):
+                if method == "put":
+                    response = await session.put(url, json=payload)
+                else:
+                    response = await session.get(url)
+                if response.status == 404 and not self._margin_missing_logged:
+                    _LOGGER.warning("Booking har ikke /node/margins ennå. Bygg booking på nytt.")
+                    self._margin_missing_logged = True
+                if response.status >= 300:
+                    return None
+                return json.loads(await response.text())
+        except Exception:
+            _LOGGER.debug("Klarte ikke å synke marginer", exc_info=True)
+            return None
+
     async def _webhook(self, hass, webhook_id, request):
         try:
             payload = await request.json()
@@ -141,6 +321,9 @@ class HiNodeRuntime:
             self.tracker._last.isoformat() if self.tracker._last else None
         )
         self._roll_day(now)
+        if ok:
+            await self._sync_margins()
+            await self.async_refresh_availability()
         await self._apply(now)
 
     async def _ical_tick(self, now) -> None:

@@ -7,13 +7,14 @@ from .const import DOMAIN
 
 
 class HiEntity(Entity):
-    """Entitet som hører til ett anlegg."""
+    """Entitet som hører til ett anlegg. group sier hvilken boks den vises i."""
 
     _attr_has_entity_name = True
     _attr_should_poll = False
 
-    def __init__(self, runtime, unique_suffix: str, name: str) -> None:
+    def __init__(self, runtime, unique_suffix: str, name: str, group: str | None = None) -> None:
         self.runtime = runtime
+        self._group = group
         self._attr_unique_id = f"{runtime.entry.entry_id}_{unique_suffix}"
         self._attr_name = name
         self._attr_device_info = DeviceInfo(
