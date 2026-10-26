@@ -62,15 +62,20 @@ cp -a /tmp/hi-node/custom_components/hi_node /config/custom_components/
 - Med **HACS**: oppdater fra HACS når ny release finnes (eller fra default branch hvis du ikke bruker releases).
 - Manuelt: `git pull` i klonen og kopier `custom_components/hi_node` på nytt, deretter restart HA.
 
+## Ikon / merkevare
+
+- **I Home Assistant** (Innstillinger → Integrasjoner, enhetssider m.m.): ikonet kommer fra `custom_components/hi_node/brand/` (støttet fra HA 2026.3). Etter install/oppdatering: restart HA og hard refresh i nettleseren.
+- **I HACS-oversikten**: HACS henter fortsatt ikon fra den gamle brands-CDN-en. Home Assistant tar **ikke lenger imot** nye custom-ikoner der. Resultatet er at HACS ofte viser grått plassholder-ikon selv om HI-node har riktig merkevare lokalt. Dette er en kjent HACS-begrensning (fikses i Marketplace / HA 2026.11). Det betyr ikke at integrasjonen mangler ikon i selve Home Assistant.
+
 ## Repo-struktur (HACS)
 
 ```
 hacs.json
 README.md
-brand/icon.png          # HACS / merkevare
-custom_components/hi_node/
-  manifest.json
-  ...
+brand/icon.png                         # HACS-sjekk / merkevare i repo-rot
+custom_components/hi_node/brand/       # Ikon i selve HA-integrasjonen
+custom_components/hi_node/manifest.json
+...
 ```
 
 ## Krav
