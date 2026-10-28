@@ -9,28 +9,31 @@ from .features import has_feature
 
 async def async_setup_entry(hass, entry, async_add_entities):
     runtime = hass.data[DOMAIN][entry.entry_id]
-    grunnvarme_name = (
-        "Grunnvarme timeplan"
-        if has_feature(runtime.normalized, "grunnvarme_schedule")
-        else "Grunnvarme"
-    )
     entities = [
         FlagSwitch(runtime, "override_oven", "Manuell ovn", "overrides", "oven", "oven"),
         FlagSwitch(runtime, "override_door", "Manuell dør", "overrides", "door", "door"),
         FlagSwitch(runtime, "override_light", "Manuell lys", "overrides", "light", "light"),
-        FlagSwitch(
-            runtime,
-            "grunnvarme",
-            grunnvarme_name,
-            "grunnvarme_timeplan",
-            None,
-            "oven",
-        ),
-        BookingClosedSwitch(runtime),
     ]
+    if has_feature(
+        runtime.normalized, "grunnvarme_quota"
+    ) or has_feature(runtime.normalized, "grunnvarme_schedule"):
+        grunnvarme_name = (
+            "Grunnvarme timeplan"
+            if has_feature(runtime.normalized, "grunnvarme_schedule")
+            else "Grunnvarme"
+        )
+        entities.append(
+            FlagSwitch(
+                runtime,
+                "grunnvarme",
+                grunnvarme_name,
+                "grunnvarme_timeplan",
+                None,
+                "oven",
+            )
+        )
     if has_feature(runtime.normalized, "frost"):
-        entities.insert(
-            -1,
+        entities.append(
             FlagSwitch(
                 runtime,
                 "frostvakt",
@@ -40,6 +43,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
                 "oven",
             ),
         )
+    entities.append(BookingClosedSwitch(runtime))
     async_add_entities(entities)
 
 

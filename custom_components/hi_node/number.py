@@ -96,11 +96,19 @@ async def async_setup_entry(hass, entry, async_add_entities):
                 ),
             ]
         )
-    entities.append(
-        PlainNumber(
-            runtime, "grunnvarme_hours_per_day", "Grunnvarme timer per dag", 0, 24, 0.5, "h", "oven"
+    if has_feature(runtime.normalized, "grunnvarme_quota"):
+        entities.append(
+            PlainNumber(
+                runtime,
+                "grunnvarme_hours_per_day",
+                "Grunnvarme timer per dag",
+                0,
+                24,
+                0.5,
+                "h",
+                "oven",
+            )
         )
-    )
     async_add_entities(entities)
 
 
