@@ -23,6 +23,44 @@ async def async_setup_entry(hass, entry, async_add_entities):
         for index in (0, 1):
             name, limit = _MARGIN_NAMES[(role, index)]
             entities.append(MarginNumber(runtime, role, index, name, limit))
+    if has_feature(runtime.normalized, "climate"):
+        entities.extend(
+            [
+                PlainNumber(
+                    runtime,
+                    "booking_c",
+                    "Booking temperatur",
+                    5,
+                    120,
+                    1,
+                    "°C",
+                    "oven",
+                    persist_temp=True,
+                ),
+                PlainNumber(
+                    runtime,
+                    "grunnvarme_c",
+                    "Grunnvarme temperatur",
+                    5,
+                    120,
+                    1,
+                    "°C",
+                    "oven",
+                    persist_temp=True,
+                ),
+                PlainNumber(
+                    runtime,
+                    "default_c",
+                    "Standard temperatur",
+                    5,
+                    120,
+                    1,
+                    "°C",
+                    "oven",
+                    persist_temp=True,
+                ),
+            ]
+        )
     if has_feature(runtime.normalized, "frost"):
         entities.extend(
             [
@@ -100,10 +138,21 @@ class PlainNumber(HiEntity, NumberEntity):
     _attr_mode = NumberMode.BOX
 
     def __init__(
-        self, runtime, key: str, name: str, low: float, high: float, step: float, unit: str, group: str
+        self,
+        runtime,
+        key: str,
+        name: str,
+        low: float,
+        high: float,
+        step: float,
+        unit: str,
+        group: str,
+        *,
+        persist_temp: bool = False,
     ) -> None:
         super().__init__(runtime, key, name, group=group)
         self._key = key
+        self._persist_temp = persist_temp
         self._attr_native_min_value = low
         self._attr_native_max_value = high
         self._attr_native_step = step
@@ -114,5 +163,8 @@ class PlainNumber(HiEntity, NumberEntity):
         return self.runtime.data.get(self._key)
 
     async def async_set_native_value(self, value: float) -> None:
+        if self._persist_temp:
+            await self.runtime.async_set_temp(self._key, value)
+            return
         self.runtime.data[self._key] = float(value)
         await self.runtime.async_apply_now()

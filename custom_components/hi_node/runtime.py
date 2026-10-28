@@ -17,6 +17,7 @@ from homeassistant.util import dt as dt_util
 
 from .brain import RoleState, decide, next_frost_calling, parse_command
 from .calendar_feed import parse_ical
+from .climate_control import target_c_for_reason
 from .const import DEFAULT_MARGINS, DOMAIN, RESET_HOLD_SECONDS, ROLES
 from .availability import (
     DEFAULT_DURATION_KEY,
@@ -133,6 +134,9 @@ class HiNodeRuntime:
             }
             self.data["margins"] = {**_blank_state()["margins"], **(stored.get("margins") or {})}
         entry_temps = self.entry.data.get("temps")
+        if has_feature(self.normalized, "climate"):
+            for key in ("booking_c", "grunnvarme_c", "default_c"):
+                self.data[key] = self.normalized["temps"][key]
         if has_feature(self.normalized, "frost") and isinstance(entry_temps, dict):
             for key in ("frost_c", "frost_hysteresis_c", "frost_off_c"):
                 self.data[key] = self.normalized["temps"][key]
@@ -169,6 +173,20 @@ class HiNodeRuntime:
         """Lagre lokal tilstand uten ny beslutning."""
         await self.store.async_save(self.data)
         self._notify()
+
+    async def async_set_temp(self, key: str, value: float) -> None:
+        """Oppdater arbeidskopi og config entry for ett temperatursettpunkt."""
+        if key not in ("booking_c", "grunnvarme_c", "default_c"):
+            raise ValueError(f"Ukjent temperatursettpunkt: {key}")
+        number = float(value)
+        self.data[key] = number
+        entry_data = dict(self.entry.data)
+        entry_temps = dict(entry_data.get("temps") or {})
+        entry_temps[key] = number
+        entry_data["temps"] = entry_temps
+        self.hass.config_entries.async_update_entry(self.entry, data=entry_data)
+        self.normalized = normalize_entry_data(entry_data)
+        await self.async_apply_now()
 
     async def async_push_margins(self) -> None:
         """Lokal endring av før/etter sendes til booking med en gang."""
@@ -467,6 +485,7 @@ class HiNodeRuntime:
             for role, entity_id in (module.get("roles") or {}).items():
                 if role in ROLES and entity_id:
                     await self._set_switch(entity_id, bool(getattr(decision, role)))
+        await self._set_climate_temperature(decision.reason)
         await self.store.async_save(self.data)
         self._notify()
 
@@ -492,6 +511,30 @@ class HiNodeRuntime:
             "switch",
             service,
             {"entity_id": entity_id},
+            blocking=False,
+        )
+
+    async def _set_climate_temperature(self, reason: str) -> None:
+        if not has_feature(self.normalized, "climate"):
+            return
+        entity_id = binding(self.normalized, "climate_entity")
+        if not entity_id:
+            return
+        current = self.hass.states.get(entity_id)
+        if current is None or current.state in ("unknown", "unavailable"):
+            return
+        temps = {
+            key: self.data.get(key, self.normalized["temps"][key])
+            for key in ("booking_c", "grunnvarme_c", "default_c")
+        }
+        target = target_c_for_reason(reason, temps)
+        current_target = _temperature_value(current.attributes.get("temperature"))
+        if current_target is not None and abs(current_target - target) < 0.01:
+            return
+        await self.hass.services.async_call(
+            "climate",
+            "set_temperature",
+            {"entity_id": entity_id, "temperature": target},
             blocking=False,
         )
 
