@@ -1,7 +1,13 @@
-// Deler HI-node-enhetssiden i boksene Anlegg, Dør, Lys og Ovn.
+// Deler HI-node-enhetssiden i boksene Anlegg, Dør, Lys, Ovn og Harvia.
 
-const TITLES = { site: "Anlegg", door: "Dør", light: "Lys", oven: "Ovn" };
-const BOX_ORDER = ["site", "door", "light", "oven"];
+const TITLES = {
+  site: "Anlegg",
+  door: "Dør",
+  light: "Lys",
+  oven: "Ovn",
+  harvia: "Harvia",
+};
+const BOX_ORDER = ["site", "door", "light", "oven", "harvia"];
 const SUFFIX_GROUP = {
   booking_online: "site",
   mode: "site",
@@ -31,6 +37,8 @@ const SUFFIX_GROUP = {
   frost_c: "oven",
   frost_hysteresis_c: "oven",
   frost_off_c: "oven",
+  harvia_last_reset: "harvia",
+  harvia_reset: "harvia",
 };
 const SUFFIX_ORDER = {
   site: [
@@ -59,6 +67,7 @@ const SUFFIX_ORDER = {
     "margin_oven_pre",
     "margin_oven_post",
   ],
+  harvia: ["harvia_last_reset", "harvia_reset"],
 };
 
 function suffixOf(uniqueId) {
@@ -170,6 +179,8 @@ function classify(entity) {
     ["oven", "frost_off_c", ["frostvakt_av_temperatur"]],
     ["oven", "frost_c", ["frostvakt_temperatur"]],
     ["oven", "frostvakt", ["frostvakt"]],
+    ["harvia", "harvia_last_reset", ["siste_harvia_reset"]],
+    ["harvia", "harvia_reset", ["nullstill_harvia_12t"]],
   ];
   for (const [group, key, needles] of rules) {
     if (needles.some((needle) => id.includes(needle))) {
@@ -185,7 +196,7 @@ function groupedEntities(page) {
     return null;
   }
   const entities = page._entities(page.deviceId, page._entityReg || [], page.hass.devices) || [];
-  const buckets = { site: [], door: [], light: [], oven: [] };
+  const buckets = { site: [], door: [], light: [], oven: [], harvia: [] };
   let matched = 0;
   for (const entity of entities) {
     if (entity.platform && entity.platform !== "hi_node") {

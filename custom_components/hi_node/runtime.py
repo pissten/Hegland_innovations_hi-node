@@ -11,7 +11,10 @@ from pathlib import Path
 from aiohttp import web
 from homeassistant.components import webhook
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.event import (
+    async_track_state_change_event,
+    async_track_time_interval,
+)
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
@@ -19,6 +22,11 @@ from .brain import RoleState, decide, next_frost_calling, parse_command
 from .calendar_feed import parse_ical
 from .climate_control import target_c_for_reason
 from .const import DEFAULT_MARGINS, DOMAIN, RESET_HOLD_SECONDS, ROLES
+from .harvia_reset import (
+    automatic_reset_reason,
+    parse_remaining_minutes,
+    run_reset_cycle,
+)
 from .availability import (
     DEFAULT_DURATION_KEY,
     availability_url,
@@ -61,6 +69,11 @@ def _blank_state() -> dict:
         "frost_off_c": 40,
         "oven_on_since": None,
         "reset_hold_until": None,
+        "harvia_reset_busy": False,
+        "last_reset": None,
+        "harvia_last_reset_reason": None,
+        "harvia_remaining_low_handled": False,
+        "harvia_power_off_handled": False,
         "margins_seen_at": None,
         "margins_seeded": False,
         "margins_dirty": False,
@@ -86,6 +99,7 @@ class HiNodeRuntime:
         self._listeners: list = []
         self._unsubs: list = []
         self._margin_lock = asyncio.Lock()
+        self._harvia_lock = asyncio.Lock()
         self._margin_missing_logged = False
         self._availability_missing_logged = False
 
@@ -133,6 +147,7 @@ class HiNodeRuntime:
                 **(stored.get("overrides") or {}),
             }
             self.data["margins"] = {**_blank_state()["margins"], **(stored.get("margins") or {})}
+        self.data["harvia_reset_busy"] = False
         entry_temps = self.entry.data.get("temps")
         if has_feature(self.normalized, "climate"):
             for key in ("booking_c", "grunnvarme_c", "default_c"):
@@ -158,6 +173,15 @@ class HiNodeRuntime:
         self._unsubs.append(
             async_track_time_interval(self.hass, self._ical_tick, timedelta(minutes=15))
         )
+        harvia_entities = self._harvia_watch_entities()
+        if harvia_entities:
+            self._unsubs.append(
+                async_track_state_change_event(
+                    self.hass,
+                    harvia_entities,
+                    self._harvia_state_changed,
+                )
+            )
         await self._tick(dt_util.now())
 
     async def async_stop(self) -> None:
@@ -168,6 +192,19 @@ class HiNodeRuntime:
 
     async def async_apply_now(self) -> None:
         await self._apply(dt_util.now())
+
+    async def async_reset_harvia_now(self) -> bool:
+        """Kjør manuell Harvia-reset når modulen og begge bryterne finnes."""
+        if not self._harvia_available():
+            return False
+        now = dt_util.now()
+        completed = await self._run_harvia_reset(now, "manual")
+        if completed:
+            await self._apply(now)
+        else:
+            await self.store.async_save(self.data)
+            self._notify()
+        return completed
 
     async def async_persist(self) -> None:
         """Lagre lokal tilstand uten ny beslutning."""
@@ -358,6 +395,10 @@ class HiNodeRuntime:
         await self._refresh_ical()
         await self._apply(dt_util.as_local(now))
 
+    async def _harvia_state_changed(self, event) -> None:
+        """Reager med en gang på Harvia-strøm og gjenstående tid."""
+        await self._apply(dt_util.now())
+
     async def _health_ok(self) -> bool:
         url = self.entry.data.get("health_url")
         if not url:
@@ -463,13 +504,41 @@ class HiNodeRuntime:
         )
 
     async def _apply(self, now) -> None:
+        if self.data.get("harvia_reset_busy"):
+            return
         hold = _stamp(self.data.get("reset_hold_until"))
         if hold is not None and now >= hold:
             self.data["reset_hold_until"] = None
         self._update_frost_calling()
         state = self.role_state(now)
         decision = decide(state, now)
-        if decision.reason == "heater_12h" and state.oven_on_since is not None:
+        if self._harvia_available():
+            remaining_minutes = self._harvia_remaining_minutes()
+            power_is_on = self._switch_state(
+                binding(self.normalized, "heater_power_entity")
+            )
+            self._refresh_harvia_latches(remaining_minutes, power_is_on)
+            heater_limit_reached = (
+                decision.reason == "heater_12h"
+                and state.oven_on_since is not None
+            )
+            reset_reason = automatic_reset_reason(
+                feature_enabled=True,
+                oven_desired=bool(decision.oven or heater_limit_reached),
+                heater_limit_reached=heater_limit_reached,
+                remaining_minutes=remaining_minutes,
+                power_is_on=power_is_on,
+                remaining_low_handled=bool(
+                    self.data.get("harvia_remaining_low_handled")
+                ),
+                power_off_handled=bool(
+                    self.data.get("harvia_power_off_handled")
+                ),
+            )
+            if reset_reason and await self._run_harvia_reset(now, reset_reason):
+                state = self.role_state(now)
+                decision = decide(state, now)
+        elif decision.reason == "heater_12h" and state.oven_on_since is not None:
             self.data["reset_hold_until"] = (
                 now + timedelta(seconds=RESET_HOLD_SECONDS)
             ).isoformat()
@@ -488,6 +557,93 @@ class HiNodeRuntime:
         await self._set_climate_temperature(decision.reason)
         await self.store.async_save(self.data)
         self._notify()
+
+    def _harvia_available(self) -> bool:
+        return bool(
+            has_feature(self.normalized, "harvia_12h")
+            and binding(self.normalized, "heater_power_entity")
+            and self._oven_entity_id()
+        )
+
+    def _harvia_watch_entities(self) -> list[str]:
+        if not self._harvia_available():
+            return []
+        return list(
+            dict.fromkeys(
+                entity_id
+                for entity_id in (
+                    binding(self.normalized, "heater_power_entity"),
+                    binding(self.normalized, "remaining_time_entity"),
+                )
+                if entity_id
+            )
+        )
+
+    def _oven_entity_id(self) -> str | None:
+        for module in self.modules():
+            entity_id = (module.get("roles") or {}).get("oven")
+            if entity_id:
+                return entity_id
+        return None
+
+    def _harvia_remaining_minutes(self) -> int | None:
+        entity_id = binding(self.normalized, "remaining_time_entity")
+        if not entity_id:
+            return None
+        state = self.hass.states.get(entity_id)
+        return None if state is None else parse_remaining_minutes(state.state)
+
+    def _switch_state(self, entity_id: str | None) -> bool | None:
+        if not entity_id:
+            return None
+        state = self.hass.states.get(entity_id)
+        if state is None:
+            return None
+        if state.state == "on":
+            return True
+        if state.state == "off":
+            return False
+        return None
+
+    def _refresh_harvia_latches(
+        self,
+        remaining_minutes: int | None,
+        power_is_on: bool | None,
+    ) -> None:
+        if remaining_minutes is None or remaining_minutes > 5:
+            self.data["harvia_remaining_low_handled"] = False
+        if power_is_on is True:
+            self.data["harvia_power_off_handled"] = False
+
+    async def _run_harvia_reset(self, now, reason: str) -> bool:
+        if self._harvia_lock.locked():
+            return False
+        oven_entity_id = self._oven_entity_id()
+        power_entity_id = binding(self.normalized, "heater_power_entity")
+        if not oven_entity_id or not power_entity_id:
+            return False
+        async with self._harvia_lock:
+            self.data["harvia_reset_busy"] = True
+            self._notify()
+            try:
+                await run_reset_cycle(
+                    self.hass,
+                    oven_entity_id,
+                    power_entity_id,
+                )
+            except Exception:
+                _LOGGER.exception("Harvia 12t-reset feilet (%s)", reason)
+                return False
+            finally:
+                self.data["harvia_reset_busy"] = False
+                self._notify()
+            self.data["last_reset"] = now.isoformat()
+            self.data["harvia_last_reset_reason"] = reason
+            self.data["harvia_remaining_low_handled"] = True
+            self.data["harvia_power_off_handled"] = True
+            self.data["oven_on_since"] = now.isoformat()
+            _LOGGER.info("Harvia 12t-reset fullført (%s)", reason)
+            return True
 
     def _count_grunnvarme(self, decision, now) -> None:
         mark = _stamp(self.data.get("grunnvarme_mark"))

@@ -1,7 +1,7 @@
 """Konstanter for HI-node."""
 
 DOMAIN = "hi_node"
-PLATFORMS = ["binary_sensor", "number", "select", "sensor", "switch"]
+PLATFORMS = ["binary_sensor", "button", "number", "select", "sensor", "switch"]
 
 ROLES = ("oven", "door", "light")
 

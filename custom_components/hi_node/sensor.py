@@ -10,11 +10,15 @@ from .availability import format_closed_until
 from .brain import booking_event, oven_status
 from .const import DOMAIN
 from .entity import HiEntity
+from .features import binding
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
     runtime = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([ModeSensor(runtime), OvenStatus(runtime), ClosedUntilSensor(runtime)])
+    entities = [ModeSensor(runtime), OvenStatus(runtime), ClosedUntilSensor(runtime)]
+    if runtime._harvia_available():
+        entities.append(HarviaLastResetSensor(runtime))
+    async_add_entities(entities)
 
 
 class ModeSensor(HiEntity, SensorEntity):
@@ -76,6 +80,47 @@ class ClosedUntilSensor(HiEntity, SensorEntity):
             self.runtime.data.get("booking_unavailable_until"),
             dt_util.now(),
         )
+
+
+class HarviaLastResetSensor(HiEntity, SensorEntity):
+    """Siste fullførte Harvia dual-cycle."""
+
+    _attr_icon = "mdi:history"
+
+    def __init__(self, runtime) -> None:
+        super().__init__(
+            runtime,
+            "harvia_last_reset",
+            "Siste Harvia-reset",
+            group="harvia",
+        )
+
+    @property
+    def native_value(self):
+        return self.runtime.data.get("last_reset") or "Aldri"
+
+    @property
+    def extra_state_attributes(self):
+        remaining_entity = binding(
+            self.runtime.normalized,
+            "remaining_time_entity",
+        )
+        remaining_state = (
+            self.runtime.hass.states.get(remaining_entity)
+            if remaining_entity
+            else None
+        )
+        return {
+            "busy": bool(self.runtime.data.get("harvia_reset_busy")),
+            "reason": self.runtime.data.get("harvia_last_reset_reason"),
+            "oven_entity": self.runtime._oven_entity_id(),
+            "power_entity": binding(
+                self.runtime.normalized,
+                "heater_power_entity",
+            ),
+            "remaining_entity": remaining_entity,
+            "remaining": None if remaining_state is None else remaining_state.state,
+        }
 
 
 def _event_pairs(raw) -> list[tuple[datetime, datetime]]:
