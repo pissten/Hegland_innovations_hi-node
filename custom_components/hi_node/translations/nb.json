@@ -23,8 +23,7 @@
         "data": {
           "oven": "Ovn",
           "door": "Dør",
-          "light": "Lys",
-          "temperature_entity": "Temperatursensor"
+          "light": "Lys"
         }
       },
       "hkl_er6": {
@@ -34,15 +33,59 @@
           "static_ip": "Fast IP",
           "gateway": "Gateway",
           "subnet": "Nettmaske",
-          "temperature_entity": "Temperatursensor",
           "dashboard_url": "ESPHome-dashboard"
+        }
+      },
+      "modules": {
+        "title": "Funksjoner",
+        "description": "Velg funksjonene dette anlegget skal bruke. Valgene kan endres senere.",
+        "data": {
+          "climate": "Climate-styring",
+          "frost": "Frostvakt",
+          "grunnvarme_quota": "Grunnvarme-kvote",
+          "grunnvarme_schedule": "Grunnvarme-timeplan",
+          "harvia_12h": "Harvia 12-timers sikring"
+        }
+      },
+      "bindings": {
+        "title": "Bindinger",
+        "description": "Koble valgte funksjoner til eksisterende Home Assistant-entiteter. Frost kan bruke temperatur fra climate eller en egen sensor.",
+        "data": {
+          "climate_entity": "Climate-entitet",
+          "temperature_entity": "Temperatursensor",
+          "heater_power_entity": "Harvia strømbryter",
+          "remaining_time_entity": "Harvia gjenstående tid (valgfri)"
+        }
+      },
+      "schedule": {
+        "title": "Grunnvarme-timeplan",
+        "description": "Velg ukedager og tidsrom. Klokkeslett skrives som HH:MM.",
+        "data": {
+          "weekdays": "Ukedager",
+          "start": "Fra",
+          "end": "Til"
+        }
+      },
+      "temps": {
+        "title": "Temperaturer",
+        "description": "Angi settpunkter og frostgrenser i grader Celsius.",
+        "data": {
+          "booking_c": "Bookingtemperatur",
+          "grunnvarme_c": "Grunnvarmetemperatur",
+          "default_c": "Standardtemperatur",
+          "frost_c": "Frostgrense",
+          "frost_hysteresis_c": "Frosthysterese",
+          "frost_off_c": "Temperatur for frost av"
         }
       }
     },
     "error": {
       "url": "Adressen må starte med http:// eller https://",
       "ip": "Fast LAN-adresse trenger IP, gateway og nettmaske",
-      "switches": "Ovn, dør og lys må velges"
+      "switches": "Ovn, dør og lys må velges",
+      "frost_binding": "Frostvakt krever en climate-entitet eller temperatursensor",
+      "harvia_binding": "Harvia 12-timers sikring krever en strømbryter",
+      "schedule": "Velg minst én ukedag og bruk klokkeslett i formatet HH:MM"
     },
     "abort": {
       "already_configured": "Anlegget er allerede lagt inn"
@@ -51,10 +94,59 @@
   "options": {
     "step": {
       "init": {
-        "title": "Legg til kort",
+        "title": "Endre HI-node",
+        "menu_options": {
+          "add_io": "Legg til I/O-kort",
+          "features": "Oppdater funksjoner og bindinger"
+        }
+      },
+      "add_io": {
+        "title": "Legg til I/O-kort",
         "description": "Samme liste som ved første oppsett. Hvert kort får eget enhetsnavn.",
         "data": {
           "profile": "Kort"
+        }
+      },
+      "features": {
+        "title": "Funksjoner",
+        "description": "Aktiver eller deaktiver funksjoner for dette anlegget.",
+        "data": {
+          "climate": "Climate-styring",
+          "frost": "Frostvakt",
+          "grunnvarme_quota": "Grunnvarme-kvote",
+          "grunnvarme_schedule": "Grunnvarme-timeplan",
+          "harvia_12h": "Harvia 12-timers sikring"
+        }
+      },
+      "bindings": {
+        "title": "Bindinger",
+        "description": "Oppdater koblingene til Home Assistant-entiteter.",
+        "data": {
+          "climate_entity": "Climate-entitet",
+          "temperature_entity": "Temperatursensor",
+          "heater_power_entity": "Harvia strømbryter",
+          "remaining_time_entity": "Harvia gjenstående tid (valgfri)"
+        }
+      },
+      "schedule": {
+        "title": "Grunnvarme-timeplan",
+        "description": "Velg ukedager og tidsrom. Klokkeslett skrives som HH:MM.",
+        "data": {
+          "weekdays": "Ukedager",
+          "start": "Fra",
+          "end": "Til"
+        }
+      },
+      "temps": {
+        "title": "Temperaturer",
+        "description": "Oppdater settpunkter og frostgrenser i grader Celsius.",
+        "data": {
+          "booking_c": "Bookingtemperatur",
+          "grunnvarme_c": "Grunnvarmetemperatur",
+          "default_c": "Standardtemperatur",
+          "frost_c": "Frostgrense",
+          "frost_hysteresis_c": "Frosthysterese",
+          "frost_off_c": "Temperatur for frost av"
         }
       },
       "switches": {
@@ -77,7 +169,10 @@
     },
     "error": {
       "ip": "Fast LAN-adresse trenger IP, gateway og nettmaske",
-      "switches": "Ovn, dør og lys må velges"
+      "switches": "Ovn, dør og lys må velges",
+      "frost_binding": "Frostvakt krever en climate-entitet eller temperatursensor",
+      "harvia_binding": "Harvia 12-timers sikring krever en strømbryter",
+      "schedule": "Velg minst én ukedag og bruk klokkeslett i formatet HH:MM"
     }
   }
 }

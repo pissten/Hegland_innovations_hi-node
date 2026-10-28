@@ -1,0 +1,102 @@
+"""Tester ren hjelpelogikk for modulbasert config flow."""
+
+from __future__ import annotations
+
+import sys
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "custom_components"))
+
+from hi_node.config_helpers import (  # noqa: E402
+    build_features_from_user_input,
+    build_schedule_from_user_input,
+    validate_bindings,
+    validate_schedule_input,
+)
+from hi_node.features import DEFAULT_FEATURES  # noqa: E402
+
+
+class ConfigHelperTests(unittest.TestCase):
+    def test_feature_input_uses_defaults_for_missing_values(self):
+        features = build_features_from_user_input({"climate": True, "frost": True})
+
+        self.assertTrue(features["climate"])
+        self.assertTrue(features["frost"])
+        self.assertEqual(
+            features["grunnvarme_quota"],
+            DEFAULT_FEATURES["grunnvarme_quota"],
+        )
+        self.assertFalse(features["grunnvarme_schedule"])
+        self.assertFalse(features["harvia_12h"])
+
+    def test_frost_requires_climate_or_temperature_binding(self):
+        features = build_features_from_user_input({"frost": True})
+
+        self.assertEqual(validate_bindings(features, {}), "frost_binding")
+        self.assertIsNone(
+            validate_bindings(
+                features,
+                {"temperature_entity": "sensor.badstue_temperature"},
+            )
+        )
+        self.assertIsNone(
+            validate_bindings(
+                features,
+                {"climate_entity": "climate.badstue"},
+            )
+        )
+
+    def test_harvia_requires_power_binding(self):
+        features = build_features_from_user_input({"harvia_12h": True})
+
+        self.assertEqual(validate_bindings(features, {}), "harvia_binding")
+        self.assertIsNone(
+            validate_bindings(
+                features,
+                {"heater_power_entity": "switch.harvia_power"},
+            )
+        )
+
+    def test_schedule_converts_weekdays_to_integers(self):
+        schedule = build_schedule_from_user_input(
+            {
+                "weekdays": ["0", "2", "6"],
+                "start": "07:30",
+                "end": "21:45",
+            }
+        )
+
+        self.assertEqual(schedule["weekdays"], [0, 2, 6])
+        self.assertEqual(schedule["start"], "07:30")
+        self.assertEqual(schedule["end"], "21:45")
+
+    def test_schedule_requires_weekday_and_valid_clock_times(self):
+        self.assertEqual(
+            validate_schedule_input(
+                {"weekdays": [], "start": "06:00", "end": "22:00"}
+            ),
+            "schedule",
+        )
+        self.assertEqual(
+            validate_schedule_input(
+                {"weekdays": ["0"], "start": "24:00", "end": "22:00"}
+            ),
+            "schedule",
+        )
+        self.assertEqual(
+            validate_schedule_input(
+                {"weekdays": ["0"], "start": "06:00:00", "end": "22:00"}
+            ),
+            "schedule",
+        )
+        self.assertIsNone(
+            validate_schedule_input(
+                {"weekdays": ["0"], "start": "06:00", "end": "22:00"}
+            )
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

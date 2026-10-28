@@ -12,16 +12,52 @@ from homeassistant.core import callback
 from homeassistant.helpers.selector import (
     EntitySelector,
     EntitySelectorConfig,
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
 )
 
+from .config_helpers import (
+    build_features_from_user_input,
+    build_schedule_from_user_input,
+    validate_bindings,
+    validate_schedule_input,
+)
 from .const import DOMAIN, ROLES
+from .features import (
+    DEFAULT_BINDINGS,
+    DEFAULT_FEATURES,
+    DEFAULT_SCHEDULE,
+    DEFAULT_TEMPS,
+    FEATURE_KEYS,
+    normalize_entry_data,
+)
 from .profiles import device_name_for, entity_id_for, load_manifest, profile_by_id, slugify
 
 _SWITCH = EntitySelector(EntitySelectorConfig(domain="switch"))
 _TEMPERATURE = EntitySelector(EntitySelectorConfig(domain="sensor"))
+_CLIMATE = EntitySelector(EntitySelectorConfig(domain="climate"))
+_NUMBER = NumberSelector(
+    NumberSelectorConfig(min=0, max=150, step=1, mode=NumberSelectorMode.BOX)
+)
+_WEEKDAYS = SelectSelector(
+    SelectSelectorConfig(
+        options=[
+            {"label": "Mandag", "value": "0"},
+            {"label": "Tirsdag", "value": "1"},
+            {"label": "Onsdag", "value": "2"},
+            {"label": "Torsdag", "value": "3"},
+            {"label": "Fredag", "value": "4"},
+            {"label": "Lørdag", "value": "5"},
+            {"label": "Søndag", "value": "6"},
+        ],
+        multiple=True,
+        mode=SelectSelectorMode.LIST,
+    )
+)
 
 
 def _profile_selector():
@@ -31,6 +67,86 @@ def _profile_selector():
     ]
     return SelectSelector(
         SelectSelectorConfig(options=options, mode=SelectSelectorMode.LIST)
+    )
+
+
+def _features_schema(current: dict | None = None) -> vol.Schema:
+    values = {**DEFAULT_FEATURES, **(current or {})}
+    return vol.Schema(
+        {
+            vol.Required(key, default=bool(values[key])): bool
+            for key in FEATURE_KEYS
+        }
+    )
+
+
+def _entity_marker(key: str, current: str | None, required: bool):
+    marker = vol.Required if required else vol.Optional
+    return marker(key, default=current) if current else marker(key)
+
+
+def _bindings_schema(features: dict, current: dict | None = None) -> vol.Schema:
+    values = {**DEFAULT_BINDINGS, **(current or {})}
+    fields = {}
+    if features.get("climate"):
+        fields[_entity_marker("climate_entity", values["climate_entity"], True)] = (
+            _CLIMATE
+        )
+    if features.get("frost"):
+        needs_temperature = not features.get("climate")
+        fields[
+            _entity_marker(
+                "temperature_entity",
+                values["temperature_entity"],
+                needs_temperature,
+            )
+        ] = _TEMPERATURE
+    if features.get("harvia_12h"):
+        fields[
+            _entity_marker(
+                "heater_power_entity",
+                values["heater_power_entity"],
+                True,
+            )
+        ] = _SWITCH
+        fields[
+            _entity_marker(
+                "remaining_time_entity",
+                values["remaining_time_entity"],
+                False,
+            )
+        ] = _TEMPERATURE
+    return vol.Schema(fields)
+
+
+def _bindings_from_user_input(user_input: dict) -> dict:
+    return {
+        key: user_input.get(key) or None
+        for key in DEFAULT_BINDINGS
+    }
+
+
+def _schedule_schema(current: dict | None = None) -> vol.Schema:
+    values = {**DEFAULT_SCHEDULE, **(current or {})}
+    return vol.Schema(
+        {
+            vol.Required(
+                "weekdays",
+                default=[str(day) for day in values["weekdays"]],
+            ): _WEEKDAYS,
+            vol.Required("start", default=values["start"]): str,
+            vol.Required("end", default=values["end"]): str,
+        }
+    )
+
+
+def _temps_schema(current: dict | None = None) -> vol.Schema:
+    values = {**DEFAULT_TEMPS, **(current or {})}
+    return vol.Schema(
+        {
+            vol.Required(key, default=values[key]): _NUMBER
+            for key in DEFAULT_TEMPS
+        }
     )
 
 
@@ -94,7 +210,70 @@ def build_module(profile_id: str, slug: str, index: int, user_input: dict) -> di
     }
 
 
-class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class _FeatureStepsMixin:
+    """Felles modulsteg for første oppsett og options."""
+
+    _draft: dict
+
+    async def async_step_bindings(self, user_input=None):
+        errors = {}
+        features = self._draft["features"]
+        if user_input is not None:
+            bindings = _bindings_from_user_input(user_input)
+            error = validate_bindings(features, bindings)
+            if error:
+                errors["base"] = error
+            else:
+                self._draft["bindings"] = bindings
+                if features["grunnvarme_schedule"]:
+                    return await self.async_step_schedule()
+                if features["climate"] or features["frost"]:
+                    return await self.async_step_temps()
+                return await self._async_finish_feature_flow()
+        return self.async_show_form(
+            step_id="bindings",
+            data_schema=_bindings_schema(
+                features,
+                self._draft.get("bindings"),
+            ),
+            errors=errors,
+        )
+
+    async def async_step_schedule(self, user_input=None):
+        errors = {}
+        if user_input is not None:
+            error = validate_schedule_input(user_input)
+            if error:
+                errors["base"] = error
+            else:
+                self._draft["schedule"] = build_schedule_from_user_input(user_input)
+                features = self._draft["features"]
+                if features["climate"] or features["frost"]:
+                    return await self.async_step_temps()
+                return await self._async_finish_feature_flow()
+        return self.async_show_form(
+            step_id="schedule",
+            data_schema=_schedule_schema(self._draft.get("schedule")),
+            errors=errors,
+        )
+
+    async def async_step_temps(self, user_input=None):
+        if user_input is not None:
+            self._draft["temps"] = {
+                key: user_input[key]
+                for key in DEFAULT_TEMPS
+            }
+            return await self._async_finish_feature_flow()
+        return self.async_show_form(
+            step_id="temps",
+            data_schema=_temps_schema(self._draft.get("temps")),
+        )
+
+    async def _async_finish_feature_flow(self):
+        raise NotImplementedError
+
+
+class ConfigFlow(_FeatureStepsMixin, config_entries.ConfigFlow, domain=DOMAIN):
     """Ett skjema per anlegg."""
 
     VERSION = 1
@@ -139,8 +318,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if not all(user_input.get(role) for role in ROLES):
                 errors["base"] = "switches"
             else:
-                self._draft["temperature_entity"] = user_input.get("temperature_entity") or ""
-                return await self._async_create(user_input)
+                self._draft["module_input"] = dict(user_input)
+                return await self.async_step_modules()
         return self.async_show_form(
             step_id="switches",
             data_schema=vol.Schema(
@@ -148,7 +327,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required("oven"): _SWITCH,
                     vol.Required("door"): _SWITCH,
                     vol.Required("light"): _SWITCH,
-                    vol.Optional("temperature_entity"): _TEMPERATURE,
                 }
             ),
             errors=errors,
@@ -164,9 +342,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             elif dashboard and not _url_ok(dashboard):
                 errors["base"] = "url"
             else:
-                self._draft["temperature_entity"] = user_input.get("temperature_entity") or ""
                 self._draft["dashboard_url"] = dashboard
-                return await self._async_create(user_input)
+                self._draft["module_input"] = dict(user_input)
+                return await self.async_step_modules()
         return self.async_show_form(
             step_id="hkl_er6",
             data_schema=vol.Schema(
@@ -174,30 +352,52 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Optional("static_ip", default=""): str,
                     vol.Optional("gateway", default=""): str,
                     vol.Optional("subnet", default=""): str,
-                    vol.Optional("temperature_entity"): _TEMPERATURE,
                     vol.Optional("dashboard_url", default=""): str,
                 }
             ),
             errors=errors,
         )
 
-    async def _async_create(self, user_input: dict):
+    async def async_step_modules(self, user_input=None):
+        if user_input is not None:
+            self._draft["features"] = build_features_from_user_input(user_input)
+            return await self.async_step_bindings()
+        return self.async_show_form(
+            step_id="modules",
+            data_schema=_features_schema(),
+        )
+
+    async def _async_finish_feature_flow(self):
+        return await self._async_create()
+
+    async def _async_create(self):
         site_name = self._draft["site_name"]
         slug = slugify(site_name)
         await self.async_set_unique_id(slug)
         self._abort_if_unique_id_configured()
-        module = build_module(self._draft["profile"], slug, 1, user_input)
-        return self.async_create_entry(
-            title=site_name,
-            data={
+        module = build_module(
+            self._draft["profile"],
+            slug,
+            1,
+            self._draft["module_input"],
+        )
+        data = normalize_entry_data(
+            {
                 "name": site_name,
                 "slug": slug,
                 "ical_url": self._draft["ical_url"].strip(),
                 "health_url": self._draft["health_url"].strip(),
-                "temperature_entity": self._draft.get("temperature_entity") or "",
                 "dashboard_url": self._draft.get("dashboard_url") or "",
+                "features": self._draft["features"],
+                "bindings": self._draft.get("bindings", {}),
+                "schedule": self._draft.get("schedule", {}),
+                "temps": self._draft.get("temps", {}),
                 "modules": [module],
-            },
+            }
+        )
+        return self.async_create_entry(
+            title=site_name,
+            data=data,
         )
 
     @staticmethod
@@ -206,22 +406,44 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return OptionsFlowHandler()
 
 
-class OptionsFlowHandler(config_entries.OptionsFlow):
-    """Legg til et kort fra samme liste."""
+class OptionsFlowHandler(_FeatureStepsMixin, config_entries.OptionsFlow):
+    """Legg til I/O-kort eller oppdater funksjoner og bindinger."""
 
     def __init__(self) -> None:
         super().__init__()
         self._profile: str | None = None
+        self._draft: dict = {}
 
     async def async_step_init(self, user_input=None):
+        return self.async_show_menu(
+            step_id="init",
+            menu_options=["add_io", "features"],
+        )
+
+    async def async_step_add_io(self, user_input=None):
         if user_input is not None:
             self._profile = user_input["profile"]
             if user_input["profile"] == "existing_switches":
                 return await self.async_step_switches()
             return await self.async_step_hkl_er6()
         return self.async_show_form(
-            step_id="init",
+            step_id="add_io",
             data_schema=vol.Schema({vol.Required("profile"): _profile_selector()}),
+        )
+
+    async def async_step_features(self, user_input=None):
+        current = normalize_entry_data(dict(self.config_entry.data))
+        if user_input is not None:
+            self._draft = {
+                "features": build_features_from_user_input(user_input),
+                "bindings": current["bindings"],
+                "schedule": current["schedule"],
+                "temps": current["temps"],
+            }
+            return await self.async_step_bindings()
+        return self.async_show_form(
+            step_id="features",
+            data_schema=_features_schema(current["features"]),
         )
 
     async def async_step_switches(self, user_input=None):
@@ -264,10 +486,23 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         )
 
     def _add(self, user_input: dict):
-        data = dict(self.config_entry.data)
+        data = normalize_entry_data(dict(self.config_entry.data))
         modules = list(data.get("modules") or [])
         modules.append(build_module(self._profile, data["slug"], len(modules) + 1, user_input))
         data["modules"] = modules
+        self.hass.config_entries.async_update_entry(self.config_entry, data=data)
+        self.hass.async_create_task(
+            self.hass.config_entries.async_reload(self.config_entry.entry_id)
+        )
+        return self.async_create_entry(title="", data={})
+
+    async def _async_finish_feature_flow(self):
+        data = normalize_entry_data(dict(self.config_entry.data))
+        data["features"] = self._draft["features"]
+        data["bindings"] = self._draft["bindings"]
+        data["schedule"] = self._draft["schedule"]
+        data["temps"] = self._draft["temps"]
+        data = normalize_entry_data(data)
         self.hass.config_entries.async_update_entry(self.config_entry, data=data)
         self.hass.async_create_task(
             self.hass.config_entries.async_reload(self.config_entry.entry_id)
