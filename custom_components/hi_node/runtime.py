@@ -32,6 +32,7 @@ from .margins import (
     parse_margin_document,
 )
 from .dashboard import compile_message, dashboard_candidates
+from .features import binding, normalize_entry_data
 from .health import HealthTracker
 from .profiles import profile_by_id, render_profile
 
@@ -72,6 +73,7 @@ class HiNodeRuntime:
     def __init__(self, hass, entry) -> None:
         self.hass = hass
         self.entry = entry
+        self.normalized = normalize_entry_data(dict(entry.data))
         self.store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}")
         self.data = _blank_state()
         self.tracker = HealthTracker()
@@ -97,7 +99,7 @@ class HiNodeRuntime:
             update()
 
     def modules(self) -> list:
-        return list(self.entry.data.get("modules") or [])
+        return list(self.normalized.get("modules") or [])
 
     async def async_drop_group_devices(self) -> None:
         """Fjern ovn, dør og lys som egne enheter etter at entitetene er flyttet tilbake."""
@@ -116,6 +118,7 @@ class HiNodeRuntime:
                 registry.async_remove_device(child.id)
 
     async def async_start(self) -> None:
+        self.normalized = normalize_entry_data(dict(self.entry.data))
         stored = await self.store.async_load()
         self.data = _blank_state()
         if stored:
@@ -126,6 +129,9 @@ class HiNodeRuntime:
                 **(stored.get("overrides") or {}),
             }
             self.data["margins"] = {**_blank_state()["margins"], **(stored.get("margins") or {})}
+        entry_temps = self.entry.data.get("temps")
+        if isinstance(entry_temps, dict) and "frost_c" in entry_temps:
+            self.data["frost_c"] = self.normalized["temps"]["frost_c"]
         self.tracker.failures = int(self.data.get("failures") or 0)
         self.tracker.fallback = bool(self.data.get("fallback"))
         last = self.data.get("last_failure")
@@ -388,7 +394,7 @@ class HiNodeRuntime:
         )
 
     def _temperature(self):
-        entity_id = self.entry.data.get("temperature_entity")
+        entity_id = binding(self.normalized, "temperature_entity")
         if not entity_id:
             return None
         state = self.hass.states.get(entity_id)
