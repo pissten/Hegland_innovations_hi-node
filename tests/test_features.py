@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT / "custom_components"))
 from hi_node.features import (  # noqa: E402
     DEFAULT_BINDINGS,
     DEFAULT_FEATURES,
+    DEFAULT_RUNTIME,
     DEFAULT_SCHEDULE,
     DEFAULT_TEMPS,
     binding,
@@ -30,6 +31,11 @@ class FeatureMigrationTests(unittest.TestCase):
         self.assertEqual(normalized["bindings"], DEFAULT_BINDINGS)
         self.assertEqual(normalized["schedule"], DEFAULT_SCHEDULE)
         self.assertEqual(normalized["temps"], DEFAULT_TEMPS)
+        self.assertEqual(normalized["runtime"], DEFAULT_RUNTIME)
+        self.assertTrue(normalized["features"]["override_timers"])
+        self.assertFalse(normalized["features"]["runtime_alarm"])
+        self.assertFalse(normalized["features"]["runtime_notify"])
+        self.assertIsNone(normalized["bindings"]["notify_service"])
 
     def test_old_temperature_entity_moves_to_bindings_and_enables_frost(self):
         old = {"temperature_entity": "sensor.badstue_temperature"}
@@ -57,6 +63,7 @@ class FeatureMigrationTests(unittest.TestCase):
             "temperature_entity": "sensor.legacy_temperature",
             "schedule": {"start": "08:00"},
             "temps": {"frost_c": 15},
+            "runtime": {"override_minutes": 90},
         }
 
         normalized = normalize_entry_data(old)
@@ -71,6 +78,11 @@ class FeatureMigrationTests(unittest.TestCase):
         self.assertEqual(normalized["schedule"]["end"], DEFAULT_SCHEDULE["end"])
         self.assertEqual(normalized["temps"]["frost_c"], 15)
         self.assertEqual(normalized["temps"]["booking_c"], DEFAULT_TEMPS["booking_c"])
+        self.assertEqual(normalized["runtime"]["override_minutes"], 90)
+        self.assertEqual(
+            normalized["runtime"]["alarm_delay_seconds"],
+            DEFAULT_RUNTIME["alarm_delay_seconds"],
+        )
         self.assertEqual(normalized["ical_url"], old["ical_url"])
         self.assertIs(normalized["modules"], modules)
         self.assertIsNot(normalized, old)

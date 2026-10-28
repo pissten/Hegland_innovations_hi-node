@@ -8,14 +8,16 @@ from homeassistant.util import dt as dt_util
 
 from .availability import format_closed_until
 from .brain import booking_event, oven_status
-from .const import DOMAIN
+from .const import DOMAIN, ROLES
 from .entity import HiEntity
-from .features import binding
+from .features import binding, has_feature
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
     runtime = hass.data[DOMAIN][entry.entry_id]
     entities = [ModeSensor(runtime), OvenStatus(runtime), ClosedUntilSensor(runtime)]
+    if has_feature(runtime.normalized, "override_timers"):
+        entities.extend(OverrideRemainingSensor(runtime, role) for role in ROLES)
     if runtime._harvia_available():
         entities.append(HarviaLastResetSensor(runtime))
     async_add_entities(entities)
@@ -80,6 +82,27 @@ class ClosedUntilSensor(HiEntity, SensorEntity):
             self.runtime.data.get("booking_unavailable_until"),
             dt_util.now(),
         )
+
+
+class OverrideRemainingSensor(HiEntity, SensorEntity):
+    """Hele minutter til en manuell overstyring utløper."""
+
+    _attr_native_unit_of_measurement = "min"
+    _attr_icon = "mdi:timer-outline"
+
+    def __init__(self, runtime, role: str) -> None:
+        names = {"oven": "Ovn", "door": "Dør", "light": "Lys"}
+        super().__init__(
+            runtime,
+            f"override_remaining_{role}",
+            f"Manuell {names[role].lower()} gjenstår",
+            group=role,
+        )
+        self._role = role
+
+    @property
+    def native_value(self):
+        return self.runtime.override_remaining_minutes(self._role)
 
 
 class HarviaLastResetSensor(HiEntity, SensorEntity):

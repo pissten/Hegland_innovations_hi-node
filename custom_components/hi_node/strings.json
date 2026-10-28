@@ -47,6 +47,17 @@
           "harvia_12h": "Harvia 12-timers sikring"
         }
       },
+      "drift": {
+        "title": "Drift",
+        "description": "Aktiver tidsstyrt manuell overstyring, ovnsalarm og pushvarsel. Tidsverdiene kan senere justeres fra enhetssiden.",
+        "data": {
+          "override_timers": "Tidsbegrenset manuell overstyring",
+          "runtime_alarm": "Alarm ved ovnsavvik",
+          "runtime_notify": "Pushvarsel ved alarm",
+          "override_minutes": "Overstyringstid (minutter)",
+          "alarm_delay_seconds": "Alarmforsinkelse (sekunder)"
+        }
+      },
       "bindings": {
         "title": "Bindinger",
         "description": "Koble valgte funksjoner til eksisterende Home Assistant-entiteter. Frost kan bruke temperatur fra climate eller en egen sensor.",
@@ -54,7 +65,8 @@
           "climate_entity": "Climate-entitet",
           "temperature_entity": "Temperatursensor",
           "heater_power_entity": "Harvia strømbryter",
-          "remaining_time_entity": "Harvia gjenstående tid (valgfri)"
+          "remaining_time_entity": "Harvia gjenstående tid (valgfri)",
+          "notify_service": "Varslingstjeneste (f.eks. notify.mobile_app_telefon)"
         }
       },
       "schedule": {
@@ -85,6 +97,7 @@
       "switches": "Ovn, dør og lys må velges",
       "frost_binding": "Frostvakt krever en climate-entitet eller temperatursensor",
       "harvia_binding": "Harvia 12-timers sikring krever en strømbryter",
+      "notify_binding": "Pushvarsel krever en tjeneste på formen domene.tjeneste",
       "schedule": "Velg minst én ukedag og bruk klokkeslett i formatet HH:MM"
     },
     "abort": {
@@ -118,6 +131,17 @@
           "harvia_12h": "Harvia 12-timers sikring"
         }
       },
+      "drift": {
+        "title": "Drift",
+        "description": "Oppdater tidsstyrt overstyring, ovnsalarm og pushvarsel.",
+        "data": {
+          "override_timers": "Tidsbegrenset manuell overstyring",
+          "runtime_alarm": "Alarm ved ovnsavvik",
+          "runtime_notify": "Pushvarsel ved alarm",
+          "override_minutes": "Overstyringstid (minutter)",
+          "alarm_delay_seconds": "Alarmforsinkelse (sekunder)"
+        }
+      },
       "bindings": {
         "title": "Bindinger",
         "description": "Oppdater koblingene til Home Assistant-entiteter.",
@@ -125,7 +149,8 @@
           "climate_entity": "Climate-entitet",
           "temperature_entity": "Temperatursensor",
           "heater_power_entity": "Harvia strømbryter",
-          "remaining_time_entity": "Harvia gjenstående tid (valgfri)"
+          "remaining_time_entity": "Harvia gjenstående tid (valgfri)",
+          "notify_service": "Varslingstjeneste (f.eks. notify.mobile_app_telefon)"
         }
       },
       "schedule": {
@@ -172,6 +197,7 @@
       "switches": "Ovn, dør og lys må velges",
       "frost_binding": "Frostvakt krever en climate-entitet eller temperatursensor",
       "harvia_binding": "Harvia 12-timers sikring krever en strømbryter",
+      "notify_binding": "Pushvarsel krever en tjeneste på formen domene.tjeneste",
       "schedule": "Velg minst én ukedag og bruk klokkeslett i formatet HH:MM"
     }
   }

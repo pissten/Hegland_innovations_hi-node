@@ -127,6 +127,9 @@ class EntityGatingTests(unittest.TestCase):
                 "grunnvarme_quota": False,
                 "grunnvarme_schedule": False,
                 "harvia_12h": False,
+                "override_timers": False,
+                "runtime_alarm": False,
+                "runtime_notify": False,
             }
         )
 
@@ -140,6 +143,10 @@ class EntityGatingTests(unittest.TestCase):
         )
         self.assertNotIn("harvia_last_reset", _suffixes(sensor, runtime))
         self.assertNotIn("harvia_reset", _suffixes(button, runtime))
+        self.assertNotIn("override_remaining_oven", _suffixes(sensor, runtime))
+        self.assertNotIn("override_minutes", _suffixes(number, runtime))
+        self.assertNotIn("oven_mismatch", _suffixes(binary_sensor, runtime))
+        self.assertNotIn("alarm_delay_seconds", _suffixes(number, runtime))
 
     def test_quota_and_schedule_gate_grunnvarme_entities_independently(self):
         quota = _Runtime(
@@ -177,6 +184,22 @@ class EntityGatingTests(unittest.TestCase):
         self.assertIn("frost_c", _suffixes(number, runtime))
         self.assertIn("harvia_last_reset", _suffixes(sensor, runtime))
         self.assertIn("harvia_reset", _suffixes(button, runtime))
+
+    def test_phase_two_entities_follow_runtime_features(self):
+        runtime = _Runtime(
+            {
+                "override_timers": True,
+                "runtime_alarm": True,
+                "runtime_notify": True,
+            }
+        )
+
+        self.assertIn("override_remaining_oven", _suffixes(sensor, runtime))
+        self.assertIn("override_remaining_door", _suffixes(sensor, runtime))
+        self.assertIn("override_remaining_light", _suffixes(sensor, runtime))
+        self.assertIn("override_minutes", _suffixes(number, runtime))
+        self.assertIn("oven_mismatch", _suffixes(binary_sensor, runtime))
+        self.assertIn("alarm_delay_seconds", _suffixes(number, runtime))
 
 
 if __name__ == "__main__":

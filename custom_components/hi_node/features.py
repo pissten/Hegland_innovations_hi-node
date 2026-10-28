@@ -10,6 +10,9 @@ FEATURE_KEYS = (
     "grunnvarme_quota",
     "grunnvarme_schedule",
     "harvia_12h",
+    "override_timers",
+    "runtime_alarm",
+    "runtime_notify",
 )
 
 DEFAULT_FEATURES = {
@@ -18,6 +21,9 @@ DEFAULT_FEATURES = {
     "grunnvarme_quota": True,
     "grunnvarme_schedule": False,
     "harvia_12h": False,
+    "override_timers": True,
+    "runtime_alarm": False,
+    "runtime_notify": False,
 }
 
 DEFAULT_BINDINGS = {
@@ -25,6 +31,7 @@ DEFAULT_BINDINGS = {
     "temperature_entity": None,
     "heater_power_entity": None,
     "remaining_time_entity": None,
+    "notify_service": None,
 }
 
 DEFAULT_SCHEDULE = {
@@ -40,6 +47,11 @@ DEFAULT_TEMPS = {
     "frost_c": 20,
     "frost_hysteresis_c": 1,
     "frost_off_c": 40,
+}
+
+DEFAULT_RUNTIME = {
+    "override_minutes": 60,
+    "alarm_delay_seconds": 45,
 }
 
 
@@ -86,6 +98,10 @@ def normalize_entry_data(data: dict) -> dict:
     normalized["bindings"] = bindings
     normalized["schedule"] = schedule
     normalized["temps"] = temps
+    existing_runtime = data.get("runtime")
+    if not isinstance(existing_runtime, dict):
+        existing_runtime = {}
+    normalized["runtime"] = {**DEFAULT_RUNTIME, **existing_runtime}
     return normalized
 
 

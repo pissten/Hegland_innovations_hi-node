@@ -30,9 +30,9 @@ from .const import DOMAIN, ROLES
 from .features import (
     DEFAULT_BINDINGS,
     DEFAULT_FEATURES,
+    DEFAULT_RUNTIME,
     DEFAULT_SCHEDULE,
     DEFAULT_TEMPS,
-    FEATURE_KEYS,
     normalize_entry_data,
 )
 from .profiles import device_name_for, entity_id_for, load_manifest, profile_by_id, slugify
@@ -43,6 +43,14 @@ _CLIMATE = EntitySelector(EntitySelectorConfig(domain="climate"))
 _NUMBER = NumberSelector(
     NumberSelectorConfig(min=0, max=150, step=1, mode=NumberSelectorMode.BOX)
 )
+_CORE_FEATURE_KEYS = (
+    "climate",
+    "frost",
+    "grunnvarme_quota",
+    "grunnvarme_schedule",
+    "harvia_12h",
+)
+_DRIFT_FEATURE_KEYS = ("override_timers", "runtime_alarm", "runtime_notify")
 _WEEKDAYS = SelectSelector(
     SelectSelectorConfig(
         options=[
@@ -75,7 +83,45 @@ def _features_schema(current: dict | None = None) -> vol.Schema:
     return vol.Schema(
         {
             vol.Required(key, default=bool(values[key])): bool
-            for key in FEATURE_KEYS
+            for key in _CORE_FEATURE_KEYS
+        }
+    )
+
+
+def _drift_schema(
+    current_features: dict | None = None,
+    current_runtime: dict | None = None,
+) -> vol.Schema:
+    features = {**DEFAULT_FEATURES, **(current_features or {})}
+    runtime = {**DEFAULT_RUNTIME, **(current_runtime or {})}
+    return vol.Schema(
+        {
+            **{
+                vol.Required(key, default=bool(features[key])): bool
+                for key in _DRIFT_FEATURE_KEYS
+            },
+            vol.Required(
+                "override_minutes",
+                default=runtime["override_minutes"],
+            ): NumberSelector(
+                NumberSelectorConfig(
+                    min=1,
+                    max=1440,
+                    step=1,
+                    mode=NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Required(
+                "alarm_delay_seconds",
+                default=runtime["alarm_delay_seconds"],
+            ): NumberSelector(
+                NumberSelectorConfig(
+                    min=0,
+                    max=600,
+                    step=1,
+                    mode=NumberSelectorMode.BOX,
+                )
+            ),
         }
     )
 
@@ -116,6 +162,14 @@ def _bindings_schema(features: dict, current: dict | None = None) -> vol.Schema:
                 False,
             )
         ] = _TEMPERATURE
+    if features.get("runtime_notify"):
+        fields[
+            _entity_marker(
+                "notify_service",
+                values["notify_service"],
+                True,
+            )
+        ] = str
     return vol.Schema(fields)
 
 
@@ -214,6 +268,25 @@ class _FeatureStepsMixin:
     """Felles modulsteg for første oppsett og options."""
 
     _draft: dict
+
+    async def async_step_drift(self, user_input=None):
+        if user_input is not None:
+            features = dict(self._draft["features"])
+            for key in _DRIFT_FEATURE_KEYS:
+                features[key] = bool(user_input[key])
+            self._draft["features"] = features
+            self._draft["runtime"] = {
+                key: user_input[key]
+                for key in DEFAULT_RUNTIME
+            }
+            return await self.async_step_bindings()
+        return self.async_show_form(
+            step_id="drift",
+            data_schema=_drift_schema(
+                self._draft.get("features"),
+                self._draft.get("runtime"),
+            ),
+        )
 
     async def async_step_bindings(self, user_input=None):
         errors = {}
@@ -361,7 +434,8 @@ class ConfigFlow(_FeatureStepsMixin, config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_modules(self, user_input=None):
         if user_input is not None:
             self._draft["features"] = build_features_from_user_input(user_input)
-            return await self.async_step_bindings()
+            self._draft["runtime"] = dict(DEFAULT_RUNTIME)
+            return await self.async_step_drift()
         return self.async_show_form(
             step_id="modules",
             data_schema=_features_schema(),
@@ -392,6 +466,7 @@ class ConfigFlow(_FeatureStepsMixin, config_entries.ConfigFlow, domain=DOMAIN):
                 "bindings": self._draft.get("bindings", {}),
                 "schedule": self._draft.get("schedule", {}),
                 "temps": self._draft.get("temps", {}),
+                "runtime": self._draft.get("runtime", {}),
                 "modules": [module],
             }
         )
@@ -434,13 +509,21 @@ class OptionsFlowHandler(_FeatureStepsMixin, config_entries.OptionsFlow):
     async def async_step_features(self, user_input=None):
         current = normalize_entry_data(dict(self.config_entry.data))
         if user_input is not None:
+            features = dict(current["features"])
+            features.update(
+                {
+                    key: bool(user_input.get(key, DEFAULT_FEATURES[key]))
+                    for key in _CORE_FEATURE_KEYS
+                }
+            )
             self._draft = {
-                "features": build_features_from_user_input(user_input),
+                "features": features,
                 "bindings": current["bindings"],
                 "schedule": current["schedule"],
                 "temps": current["temps"],
+                "runtime": current["runtime"],
             }
-            return await self.async_step_bindings()
+            return await self.async_step_drift()
         return self.async_show_form(
             step_id="features",
             data_schema=_features_schema(current["features"]),
@@ -502,6 +585,7 @@ class OptionsFlowHandler(_FeatureStepsMixin, config_entries.OptionsFlow):
         data["bindings"] = self._draft["bindings"]
         data["schedule"] = self._draft["schedule"]
         data["temps"] = self._draft["temps"]
+        data["runtime"] = self._draft["runtime"]
         data = normalize_entry_data(data)
         self.hass.config_entries.async_update_entry(self.config_entry, data=data)
         self.hass.async_create_task(

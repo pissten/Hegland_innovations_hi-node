@@ -134,6 +134,16 @@ Normal drift bruker webhook-kommandoer fra HI Booking. HI-node kontrollerer samt
 
 iCal hentes ved oppstart og deretter hvert 15. minutt. Ved en midlertidig iCal-feil beholdes sist gyldige bookingliste. Grunnvarme-timeplan, frostvakt og Harvia 12-timers sikring kjører lokalt og er ikke avhengige av at bookingtjenesten er tilgjengelig.
 
+## Fase 2: overstyring, alarm og varsling
+
+Steget **Drift** i oppsett og options aktiverer tre uavhengige moduler:
+
+- **Tidsbegrenset manuell overstyring** er på som standard. Når en manuell ovn-, dør- eller lysbryter slås på, eller en bundet fysisk bryter endres av en bruker, starter HI-node en lokal timer. Overstyringen fjernes automatisk når tiden utløper. Gjenstående minutter vises per rolle, og standardtiden er 60 minutter.
+- **Alarm ved ovnsavvik** oppretter **Ovn-avvik** og varsler når ovnen skal være på, men ovnsutgangen eller Harvia-strømmen fortsatt er av etter den valgte forsinkelsen. Standard er 45 sekunder.
+- **Pushvarsel ved alarm** sender ett varsel på stigende alarmkant via en lagret Home Assistant-tjeneste, for eksempel `notify.mobile_app_telefon`. Vedvarende alarm spammer ikke.
+
+Timer og alarm kjører i integrasjonen og er ikke avhengige av Lovelace eller dashboardkort. Tidsverdiene kan justeres fra enhetssiden.
+
 ## Migrering fra Væmt
 
 HI-node kan overta den sentrale Væmt-logikken, slik at booking, fallback, climate, frost, grunnvarme og Harvia ikke lenger trenger separate YAML-automasjoner.
@@ -158,7 +168,7 @@ Anbefalt migreringsrekkefølge:
 5. Kontroller boksene og ønsket tilstand i Home Assistant før fysisk styring overlates til HI-node.
 6. Deaktiver gamle Væmt-automasjoner og scripts som styrer de samme bryterne. To parallelle styringer kan ellers slå utgangene av og på mot hverandre.
 
-Plejd, undervannslys, nøkkelbryter-puls, 1-times overstyringstimer og runtime-alarm er ikke del av denne versjonen. Behold eventuell Væmt-logikk for slike funksjoner til de finnes som egne HI-node-moduler.
+Plejd, undervannslys og nøkkelbryter-puls er ikke del av denne versjonen. Behold eventuell Væmt-logikk for slike funksjoner til de finnes som egne HI-node-moduler.
 
 ## Utvikling
 

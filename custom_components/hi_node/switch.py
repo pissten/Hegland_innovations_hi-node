@@ -64,10 +64,16 @@ class FlagSwitch(HiEntity, SwitchEntity):
         return bool(self.runtime.data[self._bucket].get(self._role))
 
     async def async_turn_on(self, **kwargs) -> None:
+        if self._bucket == "overrides" and self._role is not None:
+            await self.runtime.async_set_override(self._role, True)
+            return
         self._set(True)
         await self.runtime.async_apply_now()
 
     async def async_turn_off(self, **kwargs) -> None:
+        if self._bucket == "overrides" and self._role is not None:
+            await self.runtime.async_set_override(self._role, False)
+            return
         self._set(False)
         await self.runtime.async_apply_now()
 

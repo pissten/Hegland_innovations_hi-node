@@ -21,6 +21,8 @@ async def async_setup_entry(hass, entry, async_add_entities):
     ]
     if has_feature(runtime.normalized, "grunnvarme_schedule"):
         entities.append(GrunnvarmeScheduleActive(runtime))
+    if has_feature(runtime.normalized, "runtime_alarm"):
+        entities.append(OvenMismatch(runtime))
     async_add_entities(entities)
 
 
@@ -77,3 +79,23 @@ class GrunnvarmeScheduleActive(HiEntity, BinarySensorEntity):
             state.grunnvarme_schedule_enabled
             and state.grunnvarme_in_schedule
         )
+
+
+class OvenMismatch(HiEntity, BinarySensorEntity):
+    """På når ovnen skulle vært på, men fysisk utgang fortsatt er av."""
+
+    _attr_icon = "mdi:alert-circle-outline"
+
+    def __init__(self, runtime) -> None:
+        super().__init__(runtime, "oven_mismatch", "Ovn-avvik", group="oven")
+
+    @property
+    def is_on(self) -> bool:
+        return bool(self.runtime.data.get("oven_mismatch"))
+
+    @property
+    def extra_state_attributes(self):
+        return {
+            "mismatch_since": self.runtime.data.get("mismatch_since"),
+            "delay_seconds": self.runtime.data.get("alarm_delay_seconds"),
+        }

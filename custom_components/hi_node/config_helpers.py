@@ -27,6 +27,14 @@ def validate_bindings(features: dict, bindings: dict) -> str | None:
         return "frost_binding"
     if features.get("harvia_12h") and not bindings.get("heater_power_entity"):
         return "harvia_binding"
+    if features.get("runtime_notify"):
+        service = bindings.get("notify_service")
+        if (
+            not isinstance(service, str)
+            or "." not in service
+            or not all(service.split(".", 1))
+        ):
+            return "notify_binding"
     return None
 
 

@@ -109,6 +109,32 @@ async def async_setup_entry(hass, entry, async_add_entities):
                 "oven",
             )
         )
+    if has_feature(runtime.normalized, "override_timers"):
+        entities.append(
+            PlainNumber(
+                runtime,
+                "override_minutes",
+                "Overstyringstid",
+                1,
+                1440,
+                1,
+                "min",
+                "site",
+            )
+        )
+    if has_feature(runtime.normalized, "runtime_alarm"):
+        entities.append(
+            PlainNumber(
+                runtime,
+                "alarm_delay_seconds",
+                "Alarmforsinkelse",
+                0,
+                600,
+                1,
+                "s",
+                "oven",
+            )
+        )
     async_add_entities(entities)
 
 

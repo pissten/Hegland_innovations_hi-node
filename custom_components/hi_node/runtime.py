@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import timedelta
+import math
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from aiohttp import web
@@ -44,6 +45,11 @@ from .dashboard import compile_message, dashboard_candidates
 from .features import binding, has_feature, normalize_entry_data, schedule_active
 from .health import HealthTracker
 from .profiles import profile_by_id, render_profile
+from .runtime_logic import (
+    expire_overrides,
+    next_oven_mismatch,
+    should_notify_alarm,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -52,6 +58,8 @@ def _blank_state() -> dict:
     return {
         "commands": {role: False for role in ROLES},
         "overrides": {role: False for role in ROLES},
+        "override_until": {role: None for role in ROLES},
+        "override_minutes": 60,
         "margins": {role: [pre, post] for role, (pre, post) in DEFAULT_MARGINS.items()},
         "events": [],
         "failures": 0,
@@ -74,6 +82,9 @@ def _blank_state() -> dict:
         "harvia_last_reset_reason": None,
         "harvia_remaining_low_handled": False,
         "harvia_power_off_handled": False,
+        "alarm_delay_seconds": 45,
+        "mismatch_since": None,
+        "oven_mismatch": False,
         "margins_seen_at": None,
         "margins_seeded": False,
         "margins_dirty": False,
@@ -100,6 +111,7 @@ class HiNodeRuntime:
         self._unsubs: list = []
         self._margin_lock = asyncio.Lock()
         self._harvia_lock = asyncio.Lock()
+        self._recent_switch_writes: dict[str, tuple[str, datetime]] = {}
         self._margin_missing_logged = False
         self._availability_missing_logged = False
 
@@ -146,7 +158,15 @@ class HiNodeRuntime:
                 **_blank_state()["overrides"],
                 **(stored.get("overrides") or {}),
             }
+            self.data["override_until"] = {
+                **_blank_state()["override_until"],
+                **(stored.get("override_until") or {}),
+            }
             self.data["margins"] = {**_blank_state()["margins"], **(stored.get("margins") or {})}
+        stored = stored or {}
+        for key, value in self.normalized["runtime"].items():
+            if key not in stored:
+                self.data[key] = value
         self.data["harvia_reset_busy"] = False
         entry_temps = self.entry.data.get("temps")
         if has_feature(self.normalized, "climate"):
@@ -182,6 +202,15 @@ class HiNodeRuntime:
                     self._harvia_state_changed,
                 )
             )
+        role_entities = list(self._role_entities())
+        if has_feature(self.normalized, "override_timers") and role_entities:
+            self._unsubs.append(
+                async_track_state_change_event(
+                    self.hass,
+                    role_entities,
+                    self._physical_state_changed,
+                )
+            )
         await self._tick(dt_util.now())
 
     async def async_stop(self) -> None:
@@ -192,6 +221,25 @@ class HiNodeRuntime:
 
     async def async_apply_now(self) -> None:
         await self._apply(dt_util.now())
+
+    async def async_set_override(self, role: str, enabled: bool) -> None:
+        """Sett lokal overstyring og oppdater tidsfristen."""
+        if role not in ROLES:
+            raise ValueError(f"Ukjent rolle: {role}")
+        self.data["overrides"][role] = bool(enabled)
+        if has_feature(self.normalized, "override_timers") and enabled:
+            self._start_override_timer(role, dt_util.now())
+        else:
+            self.data["override_until"][role] = None
+        await self.async_apply_now()
+
+    def override_remaining_minutes(self, role: str, now=None) -> int | None:
+        """Returner hele minutter igjen, eller None uten aktiv tidsfrist."""
+        deadline = _stamp(self.data.get("override_until", {}).get(role))
+        if deadline is None:
+            return None
+        current = dt_util.as_local(now or dt_util.now())
+        return max(0, int(math.ceil((deadline - current).total_seconds() / 60)))
 
     async def async_reset_harvia_now(self) -> bool:
         """Kjør manuell Harvia-reset når modulen og begge bryterne finnes."""
@@ -399,6 +447,52 @@ class HiNodeRuntime:
         """Reager med en gang på Harvia-strøm og gjenstående tid."""
         await self._apply(dt_util.now())
 
+    async def _physical_state_changed(self, event) -> None:
+        """Start overstyring når et menneske bruker en bundet bryter."""
+        context = getattr(event, "context", None)
+        if not getattr(context, "user_id", None):
+            return
+        entity_id = event.data.get("entity_id")
+        new_state = event.data.get("new_state")
+        old_state = event.data.get("old_state")
+        if (
+            not entity_id
+            or new_state is None
+            or new_state.state not in ("on", "off")
+            or (old_state is not None and old_state.state == new_state.state)
+        ):
+            return
+        expected = self._recent_switch_writes.get(entity_id)
+        now = dt_util.now()
+        if expected is not None:
+            expected_state, expires = expected
+            if now <= expires and new_state.state == expected_state:
+                return
+            self._recent_switch_writes.pop(entity_id, None)
+        role = self._role_entities().get(entity_id)
+        if role is None:
+            return
+        self.data["overrides"][role] = True
+        self._start_override_timer(role, now)
+        await self._apply(now)
+
+    def _start_override_timer(self, role: str, now) -> None:
+        minutes = max(0.0, float(self.data.get("override_minutes") or 0))
+        self.data["override_until"][role] = (
+            dt_util.as_local(now) + timedelta(minutes=minutes)
+        ).isoformat()
+
+    def _expire_override_timers(self, now) -> None:
+        if not has_feature(self.normalized, "override_timers"):
+            return
+        overrides, deadlines, _changed = expire_overrides(
+            self.data["overrides"],
+            self.data["override_until"],
+            now,
+        )
+        self.data["overrides"] = overrides
+        self.data["override_until"] = deadlines
+
     async def _health_ok(self) -> bool:
         url = self.entry.data.get("health_url")
         if not url:
@@ -506,6 +600,8 @@ class HiNodeRuntime:
     async def _apply(self, now) -> None:
         if self.data.get("harvia_reset_busy"):
             return
+        now = dt_util.as_local(now)
+        self._expire_override_timers(now)
         hold = _stamp(self.data.get("reset_hold_until"))
         if hold is not None and now >= hold:
             self.data["reset_hold_until"] = None
@@ -550,6 +646,7 @@ class HiNodeRuntime:
         if not decision.oven and decision.reason != "heater_12h":
             self.data["oven_on_since"] = None
         self.decision = decision
+        await self._update_oven_mismatch(decision, now)
         for module in self.modules():
             for role, entity_id in (module.get("roles") or {}).items():
                 if role in ROLES and entity_id:
@@ -579,6 +676,14 @@ class HiNodeRuntime:
             )
         )
 
+    def _role_entities(self) -> dict[str, str]:
+        found: dict[str, str] = {}
+        for module in self.modules():
+            for role, entity_id in (module.get("roles") or {}).items():
+                if role in ROLES and entity_id:
+                    found[entity_id] = role
+        return found
+
     def _oven_entity_id(self) -> str | None:
         for module in self.modules():
             entity_id = (module.get("roles") or {}).get("oven")
@@ -604,6 +709,53 @@ class HiNodeRuntime:
         if state.state == "off":
             return False
         return None
+
+    async def _update_oven_mismatch(self, decision, now) -> None:
+        previous = bool(self.data.get("oven_mismatch"))
+        if not has_feature(self.normalized, "runtime_alarm"):
+            self.data["mismatch_since"] = None
+            self.data["oven_mismatch"] = False
+            return
+        power_on = (
+            self._switch_state(binding(self.normalized, "heater_power_entity"))
+            if self._harvia_available()
+            else None
+        )
+        since, alarm = next_oven_mismatch(
+            self.data.get("mismatch_since"),
+            desired_on=bool(decision.oven),
+            oven_on=self._switch_state(self._oven_entity_id()),
+            power_on=power_on,
+            now=now,
+            delay_seconds=float(self.data.get("alarm_delay_seconds") or 0),
+        )
+        self.data["mismatch_since"] = since
+        self.data["oven_mismatch"] = alarm
+        if (
+            should_notify_alarm(previous, alarm)
+            and has_feature(self.normalized, "runtime_notify")
+        ):
+            await self._send_alarm_notification()
+
+    async def _send_alarm_notification(self) -> None:
+        service_path = binding(self.normalized, "notify_service")
+        if not service_path or "." not in service_path:
+            return
+        domain, service = service_path.split(".", 1)
+        if not domain or not service:
+            return
+        try:
+            await self.hass.services.async_call(
+                domain,
+                service,
+                {
+                    "title": f"HI-node: {self.entry.title}",
+                    "message": "Ovnen skal være på, men ovnsutgangen svarer ikke.",
+                },
+                blocking=False,
+            )
+        except Exception:
+            _LOGGER.exception("Klarte ikke å sende ovnsavvik via %s", service_path)
 
     def _refresh_harvia_latches(
         self,
@@ -663,6 +815,10 @@ class HiNodeRuntime:
         if current.state == desired:
             return
         service = "turn_on" if on else "turn_off"
+        self._recent_switch_writes[entity_id] = (
+            desired,
+            dt_util.now() + timedelta(seconds=2),
+        )
         await self.hass.services.async_call(
             "switch",
             service,
