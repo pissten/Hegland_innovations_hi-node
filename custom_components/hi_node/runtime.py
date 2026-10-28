@@ -20,7 +20,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .brain import RoleState, decide, next_frost_calling, parse_command
-from .calendar_feed import parse_ical
+from .calendar_feed import in_margin_window, parse_ical
 from .climate_control import target_c_for_reason
 from .const import DEFAULT_MARGINS, DOMAIN, RESET_HOLD_SECONDS, ROLES
 from .harvia_reset import (
@@ -618,6 +618,13 @@ class HiNodeRuntime:
                 decision.reason == "heater_12h"
                 and state.oven_on_since is not None
             )
+            pre, post = state.margins.get("oven") or (90, 0)
+            in_booking = in_margin_window(
+                now,
+                state.events,
+                int(pre),
+                int(post),
+            )
             reset_reason = automatic_reset_reason(
                 feature_enabled=True,
                 oven_desired=bool(decision.oven or heater_limit_reached),
@@ -630,6 +637,7 @@ class HiNodeRuntime:
                 power_off_handled=bool(
                     self.data.get("harvia_power_off_handled")
                 ),
+                in_booking=in_booking,
             )
             if reset_reason and await self._run_harvia_reset(now, reset_reason):
                 state = self.role_state(now)
@@ -823,6 +831,24 @@ class HiNodeRuntime:
             {"entity_id": entity_id},
             blocking=False,
         )
+
+    def climate_current_temperature(self) -> float | None:
+        entity_id = binding(self.normalized, "climate_entity")
+        if not entity_id:
+            return None
+        state = self.hass.states.get(entity_id)
+        if state is None:
+            return None
+        return _temperature_value(state.attributes.get("current_temperature"))
+
+    def climate_target_temperature(self) -> float | None:
+        entity_id = binding(self.normalized, "climate_entity")
+        if not entity_id:
+            return None
+        state = self.hass.states.get(entity_id)
+        if state is None:
+            return None
+        return _temperature_value(state.attributes.get("temperature"))
 
     async def _set_climate_temperature(self, reason: str) -> None:
         if not has_feature(self.normalized, "climate"):

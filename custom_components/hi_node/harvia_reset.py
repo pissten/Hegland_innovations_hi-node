@@ -7,6 +7,11 @@ import asyncio
 RESET_POWER_OFF_SECONDS = 10
 RESET_POWER_ON_WAIT_SECONDS = 8
 
+# Soft: reset i ledig gap når remaining er under dette.
+PREEMPTIVE_SOFT_MINUTES = 45
+# Kritisk: reset selv midt i booking.
+PREEMPTIVE_CRITICAL_MINUTES = 5
+
 _UNAVAILABLE_STATES = {"", "unknown", "unavailable", "none"}
 
 
@@ -39,22 +44,29 @@ def automatic_reset_reason(
     power_is_on: bool | None,
     remaining_low_handled: bool,
     power_off_handled: bool,
+    in_booking: bool = False,
+    soft_minutes: int = PREEMPTIVE_SOFT_MINUTES,
+    critical_minutes: int = PREEMPTIVE_CRITICAL_MINUTES,
 ) -> str | None:
-    """Velg én resetårsak, uten å repetere fastlåste sensorverdier."""
+    """Velg resetårsak.
+
+    Prefererer gap mellom bookinger (soft). Under aktiv booking resettes
+    bare ved kritisk remaining, power-feedback eller lokal 12t-grense.
+    """
     if not feature_enabled or not oven_desired:
         return None
     if heater_limit_reached:
         return "heater_12h"
     if power_is_on is False and not power_off_handled:
         return "feedback"
-    if remaining_minutes == 0 and not remaining_low_handled:
+    if remaining_minutes is None or remaining_low_handled:
+        return None
+    if remaining_minutes == 0:
         return "periodic"
-    if (
-        remaining_minutes is not None
-        and remaining_minutes <= 5
-        and not remaining_low_handled
-    ):
+    if remaining_minutes <= critical_minutes:
         return "preemptive"
+    if remaining_minutes <= soft_minutes and not in_booking:
+        return "preemptive_gap"
     return None
 
 

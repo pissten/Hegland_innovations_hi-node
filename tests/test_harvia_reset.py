@@ -38,6 +38,7 @@ class AutomaticResetReasonTests(unittest.TestCase):
             "power_is_on": False,
             "remaining_low_handled": False,
             "power_off_handled": False,
+            "in_booking": False,
         }
         self.assertIsNone(
             automatic_reset_reason(
@@ -63,12 +64,14 @@ class AutomaticResetReasonTests(unittest.TestCase):
             "power_is_on": True,
             "remaining_low_handled": False,
             "power_off_handled": False,
+            "in_booking": False,
         }
         cases = (
             ({"heater_limit_reached": True}, "heater_12h"),
             ({"power_is_on": False}, "feedback"),
             ({"remaining_minutes": 0}, "periodic"),
             ({"remaining_minutes": 5}, "preemptive"),
+            ({"remaining_minutes": 30}, "preemptive_gap"),
         )
         for changes, expected in cases:
             with self.subTest(expected=expected):
@@ -76,6 +79,35 @@ class AutomaticResetReasonTests(unittest.TestCase):
                     automatic_reset_reason(**{**base, **changes}),
                     expected,
                 )
+
+    def test_soft_preemptive_waits_during_booking(self):
+        self.assertIsNone(
+            automatic_reset_reason(
+                feature_enabled=True,
+                oven_desired=True,
+                heater_limit_reached=False,
+                remaining_minutes=30,
+                power_is_on=True,
+                remaining_low_handled=False,
+                power_off_handled=False,
+                in_booking=True,
+            )
+        )
+
+    def test_critical_preemptive_runs_during_booking(self):
+        self.assertEqual(
+            automatic_reset_reason(
+                feature_enabled=True,
+                oven_desired=True,
+                heater_limit_reached=False,
+                remaining_minutes=4,
+                power_is_on=True,
+                remaining_low_handled=False,
+                power_off_handled=False,
+                in_booking=True,
+            ),
+            "preemptive",
+        )
 
     def test_latches_prevent_repeat_for_stale_low_and_off_states(self):
         self.assertIsNone(
@@ -87,6 +119,7 @@ class AutomaticResetReasonTests(unittest.TestCase):
                 power_is_on=False,
                 remaining_low_handled=True,
                 power_off_handled=True,
+                in_booking=False,
             )
         )
 

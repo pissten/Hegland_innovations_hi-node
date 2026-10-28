@@ -5,9 +5,10 @@ const TITLES = {
   door: "Dør",
   light: "Lys",
   oven: "Ovn",
+  climate: "Termostat",
   harvia: "Harvia",
 };
-const BOX_ORDER = ["site", "door", "light", "oven", "harvia"];
+const BOX_ORDER = ["site", "door", "light", "oven", "climate", "harvia"];
 const SUFFIX_GROUP = {
   booking_online: "site",
   mode: "site",
@@ -27,9 +28,6 @@ const SUFFIX_GROUP = {
   override_remaining_light: "light",
   desired_oven: "oven",
   oven_status: "oven",
-  booking_c: "oven",
-  grunnvarme_c: "oven",
-  default_c: "oven",
   margin_oven_pre: "oven",
   margin_oven_post: "oven",
   override_oven: "oven",
@@ -43,6 +41,13 @@ const SUFFIX_GROUP = {
   frost_c: "oven",
   frost_hysteresis_c: "oven",
   frost_off_c: "oven",
+  climate_entity: "climate",
+  climate_current: "climate",
+  climate_target: "climate",
+  booking_c: "climate",
+  grunnvarme_c: "climate",
+  default_c: "climate",
+  harvia_remaining: "harvia",
   harvia_last_reset: "harvia",
   harvia_reset: "harvia",
 };
@@ -76,9 +81,6 @@ const SUFFIX_ORDER = {
     "oven_mismatch",
     "alarm_delay_seconds",
     "oven_status",
-    "booking_c",
-    "grunnvarme_c",
-    "default_c",
     "grunnvarme",
     "grunnvarme_schedule_active",
     "grunnvarme_hours_per_day",
@@ -89,7 +91,15 @@ const SUFFIX_ORDER = {
     "margin_oven_pre",
     "margin_oven_post",
   ],
-  harvia: ["harvia_last_reset", "harvia_reset"],
+  climate: [
+    "climate_entity",
+    "climate_current",
+    "climate_target",
+    "booking_c",
+    "grunnvarme_c",
+    "default_c",
+  ],
+  harvia: ["harvia_remaining", "harvia_last_reset", "harvia_reset"],
 };
 
 function suffixOf(uniqueId) {
@@ -191,9 +201,12 @@ function classify(entity) {
     ["door", "desired_door", ["dor_skal"]],
     ["light", "desired_light", ["lys_skal"]],
     ["oven", "desired_oven", ["ovn_skal"]],
-    ["oven", "booking_c", ["booking_temperatur"]],
-    ["oven", "grunnvarme_c", ["grunnvarme_temperatur"]],
-    ["oven", "default_c", ["standard_temperatur"]],
+    ["climate", "booking_c", ["booking_temperatur"]],
+    ["climate", "grunnvarme_c", ["grunnvarme_temperatur"]],
+    ["climate", "default_c", ["standard_temperatur"]],
+    ["climate", "climate_entity", ["climate_enhet"]],
+    ["climate", "climate_current", ["aktuell_temperatur"]],
+    ["climate", "climate_target", ["settpunkt"]],
     ["door", "margin_door_pre", ["_dor_for"]],
     ["door", "margin_door_post", ["_dor_etter"]],
     ["light", "margin_light_pre", ["_lys_for"]],
@@ -207,6 +220,7 @@ function classify(entity) {
     ["oven", "frost_off_c", ["frostvakt_av_temperatur"]],
     ["oven", "frost_c", ["frostvakt_temperatur"]],
     ["oven", "frostvakt", ["frostvakt"]],
+    ["harvia", "harvia_remaining", ["harvia_gjenstar"]],
     ["harvia", "harvia_last_reset", ["siste_harvia_reset"]],
     ["harvia", "harvia_reset", ["nullstill_harvia_12t"]],
   ];
@@ -224,7 +238,7 @@ function groupedEntities(page) {
     return null;
   }
   const entities = page._entities(page.deviceId, page._entityReg || [], page.hass.devices) || [];
-  const buckets = { site: [], door: [], light: [], oven: [], harvia: [] };
+  const buckets = { site: [], door: [], light: [], oven: [], climate: [], harvia: [] };
   let matched = 0;
   for (const entity of entities) {
     if (entity.platform && entity.platform !== "hi_node") {

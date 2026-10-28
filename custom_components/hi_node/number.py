@@ -34,7 +34,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
                     120,
                     1,
                     "°C",
-                    "oven",
+                    "climate",
                     persist_temp=True,
                 ),
                 PlainNumber(
@@ -45,7 +45,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
                     120,
                     1,
                     "°C",
-                    "oven",
+                    "climate",
                     persist_temp=True,
                 ),
                 PlainNumber(
@@ -56,7 +56,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
                     120,
                     1,
                     "°C",
-                    "oven",
+                    "climate",
                     persist_temp=True,
                 ),
             ]

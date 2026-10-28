@@ -8,7 +8,7 @@ from .const import DOMAIN, PLATFORMS
 __all__ = ["DOMAIN", "PLATFORMS"]
 
 _LOGGER = logging.getLogger(__name__)
-_OVERVIEW_URL = "/hi_node_static/device-groups.js?v=10"
+_OVERVIEW_URL = "/hi_node_static/device-groups.js?v=11"
 
 
 async def async_setup(hass, config):
