@@ -738,24 +738,22 @@ class HiNodeRuntime:
             await self._send_alarm_notification()
 
     async def _send_alarm_notification(self) -> None:
-        service_path = binding(self.normalized, "notify_service")
-        if not service_path or "." not in service_path:
-            return
-        domain, service = service_path.split(".", 1)
-        if not domain or not service:
+        entity_id = binding(self.normalized, "notify_entity")
+        if not entity_id or not entity_id.startswith("notify."):
             return
         try:
             await self.hass.services.async_call(
-                domain,
-                service,
+                "notify",
+                "send_message",
                 {
+                    "entity_id": entity_id,
                     "title": f"HI-node: {self.entry.title}",
                     "message": "Ovnen skal være på, men ovnsutgangen svarer ikke.",
                 },
                 blocking=False,
             )
         except Exception:
-            _LOGGER.exception("Klarte ikke å sende ovnsavvik via %s", service_path)
+            _LOGGER.exception("Klarte ikke å sende ovnsavvik via %s", entity_id)
 
     def _refresh_harvia_latches(
         self,

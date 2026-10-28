@@ -35,7 +35,7 @@ class FeatureMigrationTests(unittest.TestCase):
         self.assertTrue(normalized["features"]["override_timers"])
         self.assertFalse(normalized["features"]["runtime_alarm"])
         self.assertFalse(normalized["features"]["runtime_notify"])
-        self.assertIsNone(normalized["bindings"]["notify_service"])
+        self.assertIsNone(normalized["bindings"]["notify_entity"])
 
     def test_old_temperature_entity_moves_to_bindings_and_enables_frost(self):
         old = {"temperature_entity": "sensor.badstue_temperature"}
@@ -48,6 +48,18 @@ class FeatureMigrationTests(unittest.TestCase):
         )
         self.assertTrue(normalized["features"]["frost"])
         self.assertEqual(old, {"temperature_entity": "sensor.badstue_temperature"})
+
+    def test_legacy_notify_service_becomes_notify_entity(self):
+        old = {"bindings": {"notify_service": "notify.mobile_app_telefon"}}
+
+        normalized = normalize_entry_data(old)
+
+        self.assertEqual(
+            normalized["bindings"]["notify_entity"],
+            "notify.mobile_app_telefon",
+        )
+        self.assertNotIn("notify_service", normalized["bindings"])
+        self.assertTrue(normalized["features"]["runtime_notify"])
 
     def test_existing_features_bindings_and_other_data_are_preserved(self):
         modules = [{"profile": "existing_switches"}]

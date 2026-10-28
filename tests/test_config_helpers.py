@@ -59,18 +59,18 @@ class ConfigHelperTests(unittest.TestCase):
             )
         )
 
-    def test_notify_requires_domain_service_path(self):
+    def test_notify_requires_notify_entity(self):
         features = build_features_from_user_input({"runtime_notify": True})
 
         self.assertEqual(validate_bindings(features, {}), "notify_binding")
         self.assertEqual(
-            validate_bindings(features, {"notify_service": "mobile_app_phone"}),
+            validate_bindings(features, {"notify_entity": "mobile_app_phone"}),
             "notify_binding",
         )
         self.assertIsNone(
             validate_bindings(
                 features,
-                {"notify_service": "notify.mobile_app_phone"},
+                {"notify_entity": "notify.mobile_app_phone"},
             )
         )
 

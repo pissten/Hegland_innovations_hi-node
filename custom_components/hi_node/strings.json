@@ -66,7 +66,7 @@
           "temperature_entity": "Temperatursensor",
           "heater_power_entity": "Harvia strømbryter",
           "remaining_time_entity": "Harvia gjenstående tid (valgfri)",
-          "notify_service": "Varslingstjeneste (f.eks. notify.mobile_app_telefon)"
+          "notify_entity": "Varslingsenhet"
         }
       },
       "schedule": {
@@ -97,7 +97,7 @@
       "switches": "Ovn, dør og lys må velges",
       "frost_binding": "Frostvakt krever en climate-entitet eller temperatursensor",
       "harvia_binding": "Harvia 12-timers sikring krever en strømbryter",
-      "notify_binding": "Pushvarsel krever en tjeneste på formen domene.tjeneste",
+      "notify_binding": "Pushvarsel krever at du velger en notify-enhet",
       "schedule": "Velg minst én ukedag og bruk klokkeslett i formatet HH:MM"
     },
     "abort": {
@@ -150,7 +150,7 @@
           "temperature_entity": "Temperatursensor",
           "heater_power_entity": "Harvia strømbryter",
           "remaining_time_entity": "Harvia gjenstående tid (valgfri)",
-          "notify_service": "Varslingstjeneste (f.eks. notify.mobile_app_telefon)"
+          "notify_entity": "Varslingsenhet"
         }
       },
       "schedule": {
@@ -197,7 +197,7 @@
       "switches": "Ovn, dør og lys må velges",
       "frost_binding": "Frostvakt krever en climate-entitet eller temperatursensor",
       "harvia_binding": "Harvia 12-timers sikring krever en strømbryter",
-      "notify_binding": "Pushvarsel krever en tjeneste på formen domene.tjeneste",
+      "notify_binding": "Pushvarsel krever at du velger en notify-enhet",
       "schedule": "Velg minst én ukedag og bruk klokkeslett i formatet HH:MM"
     }
   }

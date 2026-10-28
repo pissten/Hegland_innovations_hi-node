@@ -40,6 +40,7 @@ from .profiles import device_name_for, entity_id_for, load_manifest, profile_by_
 _SWITCH = EntitySelector(EntitySelectorConfig(domain="switch"))
 _TEMPERATURE = EntitySelector(EntitySelectorConfig(domain="sensor"))
 _CLIMATE = EntitySelector(EntitySelectorConfig(domain="climate"))
+_NOTIFY = EntitySelector(EntitySelectorConfig(domain="notify"))
 _NUMBER = NumberSelector(
     NumberSelectorConfig(min=0, max=150, step=1, mode=NumberSelectorMode.BOX)
 )
@@ -165,11 +166,11 @@ def _bindings_schema(features: dict, current: dict | None = None) -> vol.Schema:
     if features.get("runtime_notify"):
         fields[
             _entity_marker(
-                "notify_service",
-                values["notify_service"],
+                "notify_entity",
+                values.get("notify_entity") or values.get("notify_service"),
                 True,
             )
-        ] = str
+        ] = _NOTIFY
     return vol.Schema(fields)
 
 

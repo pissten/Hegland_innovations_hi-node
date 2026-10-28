@@ -31,7 +31,7 @@ DEFAULT_BINDINGS = {
     "temperature_entity": None,
     "heater_power_entity": None,
     "remaining_time_entity": None,
-    "notify_service": None,
+    "notify_entity": None,
 }
 
 DEFAULT_SCHEDULE = {
@@ -73,12 +73,19 @@ def normalize_entry_data(data: dict) -> dict:
     if not bindings.get("temperature_entity") and legacy_temperature:
         bindings["temperature_entity"] = legacy_temperature
 
+    legacy_notify = bindings.pop("notify_service", None) or data.get("notify_service")
+    if not bindings.get("notify_entity") and isinstance(legacy_notify, str):
+        if legacy_notify.startswith("notify."):
+            bindings["notify_entity"] = legacy_notify
+
     if "climate" not in existing_features and bindings.get("climate_entity"):
         features["climate"] = True
     if "frost" not in existing_features and (
         bindings.get("temperature_entity") or bindings.get("climate_entity")
     ):
         features["frost"] = True
+    if "runtime_notify" not in existing_features and bindings.get("notify_entity"):
+        features["runtime_notify"] = True
 
     existing_schedule = data.get("schedule")
     if not isinstance(existing_schedule, dict):
