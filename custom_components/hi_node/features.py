@@ -78,11 +78,14 @@ def normalize_entry_data(data: dict) -> dict:
     existing_temps = data.get("temps")
     if not isinstance(existing_temps, dict):
         existing_temps = {}
+    temps = {**DEFAULT_TEMPS, **existing_temps}
+    if "frost_off_c" not in existing_temps:
+        temps["frost_off_c"] = temps.get("grunnvarme_c", 40)
 
     normalized["features"] = features
     normalized["bindings"] = bindings
     normalized["schedule"] = schedule
-    normalized["temps"] = {**DEFAULT_TEMPS, **existing_temps}
+    normalized["temps"] = temps
     return normalized
 
 

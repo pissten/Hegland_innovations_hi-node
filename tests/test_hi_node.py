@@ -15,6 +15,7 @@ from hi_node.brain import (  # noqa: E402
     booking_event,
     booking_start,
     decide,
+    next_frost_calling,
     oven_status,
     parse_command,
 )
@@ -62,6 +63,7 @@ def _state(**overrides) -> RoleState:
         grunnvarme_hours_per_day=0.0,
         grunnvarme_hours_today=0.0,
         frost_enabled=False,
+        frost_calling=False,
         frost_c=20.0,
         temperature_c=None,
         oven_on_since=None,
@@ -199,12 +201,91 @@ class BrainTests(unittest.TestCase):
         self.assertTrue(active.oven)
         self.assertEqual(active.reason, "grunnvarme")
 
-    def test_frost_is_last_and_needs_temperature(self):
-        missing = decide(_state(frost_enabled=True, temperature_c=None), T0)
+    def test_frost_uses_stored_calling_state(self):
+        missing = decide(
+            _state(frost_enabled=True, frost_calling=False, temperature_c=None),
+            T0,
+        )
         self.assertFalse(missing.oven)
-        cold = decide(_state(frost_enabled=True, temperature_c=5.0, frost_c=20.0), T0)
+        cold = decide(
+            _state(
+                frost_enabled=True,
+                frost_calling=True,
+                temperature_c=5.0,
+                frost_c=20.0,
+            ),
+            T0,
+        )
         self.assertTrue(cold.oven)
         self.assertEqual(cold.reason, "frostvakt")
+
+    def test_frost_hysteresis_keeps_previous_state_inside_band(self):
+        calling = next_frost_calling(
+            previous=False,
+            feature_enabled=True,
+            switch_enabled=True,
+            temperature_c=20.5,
+            frost_c=20.0,
+            hysteresis_c=1.0,
+            frost_off_c=40.0,
+        )
+        self.assertTrue(calling)
+        self.assertTrue(
+            next_frost_calling(
+                previous=calling,
+                feature_enabled=True,
+                switch_enabled=True,
+                temperature_c=30.0,
+                frost_c=20.0,
+                hysteresis_c=1.0,
+                frost_off_c=40.0,
+            )
+        )
+        self.assertFalse(
+            next_frost_calling(
+                previous=False,
+                feature_enabled=True,
+                switch_enabled=True,
+                temperature_c=30.0,
+                frost_c=20.0,
+                hysteresis_c=1.0,
+                frost_off_c=40.0,
+            )
+        )
+        self.assertFalse(
+            next_frost_calling(
+                previous=True,
+                feature_enabled=True,
+                switch_enabled=True,
+                temperature_c=40.0,
+                frost_c=20.0,
+                hysteresis_c=1.0,
+                frost_off_c=40.0,
+            )
+        )
+
+    def test_frost_never_calls_without_temperature_or_when_disabled(self):
+        for feature_enabled, switch_enabled, temperature_c in (
+            (True, True, None),
+            (False, True, 5.0),
+            (True, False, 5.0),
+        ):
+            with self.subTest(
+                feature_enabled=feature_enabled,
+                switch_enabled=switch_enabled,
+                temperature_c=temperature_c,
+            ):
+                self.assertFalse(
+                    next_frost_calling(
+                        previous=True,
+                        feature_enabled=feature_enabled,
+                        switch_enabled=switch_enabled,
+                        temperature_c=temperature_c,
+                        frost_c=20.0,
+                        hysteresis_c=1.0,
+                        frost_off_c=40.0,
+                    )
+                )
 
     def test_twelve_hour_guard_turns_oven_off(self):
         decision = decide(

@@ -75,6 +75,11 @@ class FeatureMigrationTests(unittest.TestCase):
         self.assertIs(normalized["modules"], modules)
         self.assertIsNot(normalized, old)
 
+    def test_frost_off_defaults_to_configured_grunnvarme_temperature(self):
+        normalized = normalize_entry_data({"temps": {"grunnvarme_c": 35}})
+
+        self.assertEqual(normalized["temps"]["frost_off_c"], 35)
+
     def test_feature_and_binding_helpers_use_normalized_data(self):
         data = normalize_entry_data(
             {

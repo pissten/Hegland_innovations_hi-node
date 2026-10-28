@@ -26,6 +26,8 @@ const SUFFIX_GROUP = {
   grunnvarme_hours_per_day: "oven",
   frostvakt: "oven",
   frost_c: "oven",
+  frost_hysteresis_c: "oven",
+  frost_off_c: "oven",
 };
 const SUFFIX_ORDER = {
   site: [
@@ -46,6 +48,8 @@ const SUFFIX_ORDER = {
     "grunnvarme_hours_per_day",
     "frostvakt",
     "frost_c",
+    "frost_hysteresis_c",
+    "frost_off_c",
     "margin_oven_pre",
     "margin_oven_post",
   ],
@@ -153,6 +157,8 @@ function classify(entity) {
     ["oven", "grunnvarme_hours_per_day", ["grunnvarme_timer"]],
     ["oven", "grunnvarme_schedule_active", ["timeplan_aktiv_na"]],
     ["oven", "grunnvarme", ["grunnvarme"]],
+    ["oven", "frost_hysteresis_c", ["frostvakt_hysterese"]],
+    ["oven", "frost_off_c", ["frostvakt_av_temperatur"]],
     ["oven", "frost_c", ["frostvakt_temperatur"]],
     ["oven", "frostvakt", ["frostvakt"]],
   ];

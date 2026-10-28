@@ -14,23 +14,33 @@ async def async_setup_entry(hass, entry, async_add_entities):
         if has_feature(runtime.normalized, "grunnvarme_schedule")
         else "Grunnvarme"
     )
-    async_add_entities(
-        [
-            FlagSwitch(runtime, "override_oven", "Manuell ovn", "overrides", "oven", "oven"),
-            FlagSwitch(runtime, "override_door", "Manuell dør", "overrides", "door", "door"),
-            FlagSwitch(runtime, "override_light", "Manuell lys", "overrides", "light", "light"),
+    entities = [
+        FlagSwitch(runtime, "override_oven", "Manuell ovn", "overrides", "oven", "oven"),
+        FlagSwitch(runtime, "override_door", "Manuell dør", "overrides", "door", "door"),
+        FlagSwitch(runtime, "override_light", "Manuell lys", "overrides", "light", "light"),
+        FlagSwitch(
+            runtime,
+            "grunnvarme",
+            grunnvarme_name,
+            "grunnvarme_timeplan",
+            None,
+            "oven",
+        ),
+        BookingClosedSwitch(runtime),
+    ]
+    if has_feature(runtime.normalized, "frost"):
+        entities.insert(
+            -1,
             FlagSwitch(
                 runtime,
-                "grunnvarme",
-                grunnvarme_name,
-                "grunnvarme_timeplan",
+                "frostvakt",
+                "Frostvakt",
+                "frost_enabled",
                 None,
                 "oven",
             ),
-            FlagSwitch(runtime, "frostvakt", "Frostvakt", "frost_enabled", None, "oven"),
-            BookingClosedSwitch(runtime),
-        ]
-    )
+        )
+    async_add_entities(entities)
 
 
 class FlagSwitch(HiEntity, SwitchEntity):

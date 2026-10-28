@@ -24,6 +24,7 @@ class RoleState:
     grunnvarme_hours_per_day: float = 0.0
     grunnvarme_hours_today: float = 0.0
     frost_enabled: bool = False
+    frost_calling: bool = False
     frost_c: float = 20.0
     temperature_c: float | None = None
     oven_on_since: datetime | None = None
@@ -212,6 +213,28 @@ def _after_last(state: RoleState, now: datetime) -> bool:
 
 
 def _frost(state: RoleState, source_oven: bool) -> bool:
-    if source_oven or not state.frost_enabled or state.temperature_c is None:
+    return bool(
+        not source_oven
+        and state.frost_enabled
+        and state.frost_calling
+    )
+
+
+def next_frost_calling(
+    *,
+    previous: bool,
+    feature_enabled: bool,
+    switch_enabled: bool,
+    temperature_c: float | None,
+    frost_c: float,
+    hysteresis_c: float,
+    frost_off_c: float,
+) -> bool:
+    """Beregn neste frostbehov og behold tilstanden i hystereseområdet."""
+    if not feature_enabled or not switch_enabled or temperature_c is None:
         return False
-    return state.temperature_c < state.frost_c
+    if temperature_c < frost_c + hysteresis_c:
+        return True
+    if temperature_c >= frost_off_c:
+        return False
+    return bool(previous)

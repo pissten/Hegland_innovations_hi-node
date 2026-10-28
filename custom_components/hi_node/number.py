@@ -4,6 +4,7 @@ from homeassistant.components.number import NumberEntity, NumberMode
 
 from .const import DOMAIN, ROLES
 from .entity import HiEntity
+from .features import has_feature
 
 _MARGIN_NAMES = {
     ("oven", 0): ("Ovn før", 180),
@@ -22,7 +23,41 @@ async def async_setup_entry(hass, entry, async_add_entities):
         for index in (0, 1):
             name, limit = _MARGIN_NAMES[(role, index)]
             entities.append(MarginNumber(runtime, role, index, name, limit))
-    entities.append(PlainNumber(runtime, "frost_c", "Frostvakt temperatur", 5, 30, 0.5, "°C", "oven"))
+    if has_feature(runtime.normalized, "frost"):
+        entities.extend(
+            [
+                PlainNumber(
+                    runtime,
+                    "frost_c",
+                    "Frostvakt temperatur",
+                    5,
+                    30,
+                    0.5,
+                    "°C",
+                    "oven",
+                ),
+                PlainNumber(
+                    runtime,
+                    "frost_hysteresis_c",
+                    "Frostvakt hysterese",
+                    0,
+                    10,
+                    0.5,
+                    "°C",
+                    "oven",
+                ),
+                PlainNumber(
+                    runtime,
+                    "frost_off_c",
+                    "Frostvakt av-temperatur",
+                    5,
+                    60,
+                    0.5,
+                    "°C",
+                    "oven",
+                ),
+            ]
+        )
     entities.append(
         PlainNumber(
             runtime, "grunnvarme_hours_per_day", "Grunnvarme timer per dag", 0, 24, 0.5, "h", "oven"

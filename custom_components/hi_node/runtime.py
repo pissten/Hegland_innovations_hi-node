@@ -15,7 +15,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
-from .brain import RoleState, decide, parse_command
+from .brain import RoleState, decide, next_frost_calling, parse_command
 from .calendar_feed import parse_ical
 from .const import DEFAULT_MARGINS, DOMAIN, RESET_HOLD_SECONDS, ROLES
 from .availability import (
@@ -54,7 +54,10 @@ def _blank_state() -> dict:
         "grunnvarme_day": None,
         "grunnvarme_mark": None,
         "frost_enabled": False,
+        "frost_calling": False,
         "frost_c": 20,
+        "frost_hysteresis_c": 1,
+        "frost_off_c": 40,
         "oven_on_since": None,
         "reset_hold_until": None,
         "margins_seen_at": None,
@@ -130,8 +133,9 @@ class HiNodeRuntime:
             }
             self.data["margins"] = {**_blank_state()["margins"], **(stored.get("margins") or {})}
         entry_temps = self.entry.data.get("temps")
-        if isinstance(entry_temps, dict) and "frost_c" in entry_temps:
-            self.data["frost_c"] = self.normalized["temps"]["frost_c"]
+        if has_feature(self.normalized, "frost") and isinstance(entry_temps, dict):
+            for key in ("frost_c", "frost_hysteresis_c", "frost_off_c"):
+                self.data[key] = self.normalized["temps"][key]
         self.tracker.failures = int(self.data.get("failures") or 0)
         self.tracker.fallback = bool(self.data.get("fallback"))
         last = self.data.get("last_failure")
@@ -398,6 +402,7 @@ class HiNodeRuntime:
             grunnvarme_hours_per_day=float(self.data.get("grunnvarme_hours_per_day") or 0),
             grunnvarme_hours_today=float(self.data.get("grunnvarme_hours_today") or 0),
             frost_enabled=bool(self.data.get("frost_enabled")),
+            frost_calling=bool(self.data.get("frost_calling")),
             frost_c=float(self.data.get("frost_c") or 20),
             temperature_c=self._temperature(),
             oven_on_since=_stamp(self.data.get("oven_on_since")),
@@ -405,21 +410,45 @@ class HiNodeRuntime:
         )
 
     def _temperature(self):
-        entity_id = binding(self.normalized, "temperature_entity")
+        climate_entity = binding(self.normalized, "climate_entity")
+        if climate_entity:
+            state = self.hass.states.get(climate_entity)
+            if state is None:
+                return None
+            return _temperature_value(state.attributes.get("current_temperature"))
+
+        entity_id = (
+            binding(self.normalized, "temperature_entity")
+            or self.entry.data.get("temperature_entity")
+        )
         if not entity_id:
             return None
         state = self.hass.states.get(entity_id)
         if state is None or state.state in ("unknown", "unavailable", "none", ""):
             return None
-        try:
-            return float(state.state)
-        except ValueError:
-            return None
+        return _temperature_value(state.state)
+
+    def _update_frost_calling(self) -> None:
+        temps = self.normalized["temps"]
+        self.data["frost_calling"] = next_frost_calling(
+            previous=bool(self.data.get("frost_calling")),
+            feature_enabled=has_feature(self.normalized, "frost"),
+            switch_enabled=bool(self.data.get("frost_enabled")),
+            temperature_c=self._temperature(),
+            frost_c=float(self.data.get("frost_c", temps["frost_c"])),
+            hysteresis_c=float(
+                self.data.get("frost_hysteresis_c", temps["frost_hysteresis_c"])
+            ),
+            frost_off_c=float(
+                self.data.get("frost_off_c", temps["frost_off_c"])
+            ),
+        )
 
     async def _apply(self, now) -> None:
         hold = _stamp(self.data.get("reset_hold_until"))
         if hold is not None and now >= hold:
             self.data["reset_hold_until"] = None
+        self._update_frost_calling()
         state = self.role_state(now)
         decision = decide(state, now)
         if decision.reason == "heater_12h" and state.oven_on_since is not None:
@@ -578,6 +607,15 @@ def _stamp(value):
     if not value:
         return None
     return dt_util.parse_datetime(value)
+
+
+def _temperature_value(value):
+    if value is None or str(value).lower() in ("unknown", "unavailable", "none", ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _schema_key(schema):
