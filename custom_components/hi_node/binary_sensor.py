@@ -4,21 +4,24 @@ from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
 )
+from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .entity import HiEntity
+from .features import has_feature
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
     runtime = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities(
-        [
-            BookingOnline(runtime),
-            Desired(runtime, "oven", "Skal kjøre"),
-            Desired(runtime, "door", "Skal være åpen"),
-            Desired(runtime, "light", "Skal være på"),
-        ]
-    )
+    entities = [
+        BookingOnline(runtime),
+        Desired(runtime, "oven", "Skal kjøre"),
+        Desired(runtime, "door", "Skal være åpen"),
+        Desired(runtime, "light", "Skal være på"),
+    ]
+    if has_feature(runtime.normalized, "grunnvarme_schedule"):
+        entities.append(GrunnvarmeScheduleActive(runtime))
+    async_add_entities(entities)
 
 
 class BookingOnline(HiEntity, BinarySensorEntity):
@@ -54,3 +57,23 @@ class Desired(HiEntity, BinarySensorEntity):
         if decision is None:
             return {}
         return {"reason": decision.reason, "mode": decision.mode}
+
+
+class GrunnvarmeScheduleActive(HiEntity, BinarySensorEntity):
+    """På når timeplanbryteren er aktiv og klokkevinduet gjelder."""
+
+    def __init__(self, runtime) -> None:
+        super().__init__(
+            runtime,
+            "grunnvarme_schedule_active",
+            "Timeplan aktiv nå",
+            group="oven",
+        )
+
+    @property
+    def is_on(self) -> bool:
+        state = self.runtime.role_state(dt_util.now())
+        return bool(
+            state.grunnvarme_schedule_enabled
+            and state.grunnvarme_in_schedule
+        )

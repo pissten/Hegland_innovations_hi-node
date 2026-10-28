@@ -19,6 +19,8 @@ class RoleState:
     overrides: dict
     margins: dict
     grunnvarme_timeplan: bool = False
+    grunnvarme_schedule_enabled: bool | None = None
+    grunnvarme_in_schedule: bool = False
     grunnvarme_hours_per_day: float = 0.0
     grunnvarme_hours_today: float = 0.0
     frost_enabled: bool = False
@@ -181,7 +183,13 @@ def _source_on(state: RoleState, role: str, now: datetime) -> bool:
 def _grunnvarme(state: RoleState, now: datetime, source_oven: bool) -> bool:
     if source_oven:
         return False
-    timeplan = bool(state.grunnvarme_timeplan)
+    if state.grunnvarme_schedule_enabled is None:
+        timeplan = bool(state.grunnvarme_timeplan)
+    else:
+        timeplan = (
+            state.grunnvarme_schedule_enabled
+            and state.grunnvarme_in_schedule
+        )
     behov = (
         state.grunnvarme_hours_per_day > 0
         and state.grunnvarme_hours_today < state.grunnvarme_hours_per_day

@@ -4,16 +4,29 @@ from homeassistant.components.switch import SwitchEntity
 
 from .const import DOMAIN
 from .entity import HiEntity
+from .features import has_feature
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
     runtime = hass.data[DOMAIN][entry.entry_id]
+    grunnvarme_name = (
+        "Grunnvarme timeplan"
+        if has_feature(runtime.normalized, "grunnvarme_schedule")
+        else "Grunnvarme"
+    )
     async_add_entities(
         [
             FlagSwitch(runtime, "override_oven", "Manuell ovn", "overrides", "oven", "oven"),
             FlagSwitch(runtime, "override_door", "Manuell dør", "overrides", "door", "door"),
             FlagSwitch(runtime, "override_light", "Manuell lys", "overrides", "light", "light"),
-            FlagSwitch(runtime, "grunnvarme", "Grunnvarme", "grunnvarme_timeplan", None, "oven"),
+            FlagSwitch(
+                runtime,
+                "grunnvarme",
+                grunnvarme_name,
+                "grunnvarme_timeplan",
+                None,
+                "oven",
+            ),
             FlagSwitch(runtime, "frostvakt", "Frostvakt", "frost_enabled", None, "oven"),
             BookingClosedSwitch(runtime),
         ]

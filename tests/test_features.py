@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,6 +18,7 @@ from hi_node.features import (  # noqa: E402
     binding,
     has_feature,
     normalize_entry_data,
+    schedule_active,
 )
 
 
@@ -86,6 +88,39 @@ class FeatureMigrationTests(unittest.TestCase):
         self.assertFalse(has_feature(data, "unknown"))
         self.assertEqual(binding(data, "heater_power_entity"), "switch.harvia_power")
         self.assertIsNone(binding(data, "remaining_time_entity"))
+
+
+class ScheduleTests(unittest.TestCase):
+    def test_weekday_window_uses_monday_as_zero(self):
+        schedule = {"weekdays": [0], "start": "06:00", "end": "22:00"}
+        oslo = timezone(timedelta(hours=1))
+
+        self.assertTrue(
+            schedule_active(schedule, datetime(2026, 10, 26, 12, 0, tzinfo=oslo))
+        )
+        self.assertFalse(
+            schedule_active(schedule, datetime(2026, 10, 27, 12, 0, tzinfo=oslo))
+        )
+        self.assertFalse(
+            schedule_active(schedule, datetime(2026, 10, 26, 22, 0, tzinfo=oslo))
+        )
+
+    def test_overnight_window_continues_from_selected_weekday(self):
+        schedule = {"weekdays": [0], "start": "22:00", "end": "06:00"}
+
+        self.assertTrue(schedule_active(schedule, datetime(2026, 10, 26, 23, 0)))
+        self.assertTrue(schedule_active(schedule, datetime(2026, 10, 27, 5, 59)))
+        self.assertFalse(schedule_active(schedule, datetime(2026, 10, 27, 6, 0)))
+        self.assertFalse(schedule_active(schedule, datetime(2026, 10, 27, 23, 0)))
+
+    def test_invalid_or_empty_schedule_is_inactive(self):
+        self.assertFalse(schedule_active({}, datetime(2026, 10, 26, 12, 0)))
+        self.assertFalse(
+            schedule_active(
+                {"weekdays": [0], "start": "06:00", "end": "06:00"},
+                datetime(2026, 10, 26, 12, 0),
+            )
+        )
 
 
 if __name__ == "__main__":

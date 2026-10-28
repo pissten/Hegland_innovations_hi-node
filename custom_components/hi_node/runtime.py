@@ -32,7 +32,7 @@ from .margins import (
     parse_margin_document,
 )
 from .dashboard import compile_message, dashboard_candidates
-from .features import binding, normalize_entry_data
+from .features import binding, has_feature, normalize_entry_data, schedule_active
 from .health import HealthTracker
 from .profiles import profile_by_id, render_profile
 
@@ -377,6 +377,11 @@ class HiNodeRuntime:
             role: tuple(self.data["margins"].get(role) or DEFAULT_MARGINS[role])
             for role in ROLES
         }
+        schedule_enabled = (
+            bool(self.data.get("grunnvarme_timeplan"))
+            if has_feature(self.normalized, "grunnvarme_schedule")
+            else None
+        )
         return RoleState(
             fallback=self.tracker.fallback,
             commands=dict(self.data["commands"]),
@@ -384,6 +389,12 @@ class HiNodeRuntime:
             overrides=dict(self.data["overrides"]),
             margins=margins,
             grunnvarme_timeplan=bool(self.data.get("grunnvarme_timeplan")),
+            grunnvarme_schedule_enabled=schedule_enabled,
+            grunnvarme_in_schedule=(
+                schedule_active(self.normalized.get("schedule"), now)
+                if schedule_enabled is not None
+                else False
+            ),
             grunnvarme_hours_per_day=float(self.data.get("grunnvarme_hours_per_day") or 0),
             grunnvarme_hours_today=float(self.data.get("grunnvarme_hours_today") or 0),
             frost_enabled=bool(self.data.get("frost_enabled")),

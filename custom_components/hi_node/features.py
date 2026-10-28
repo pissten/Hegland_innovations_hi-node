@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 FEATURE_KEYS = (
     "climate",
     "frost",
@@ -97,3 +99,37 @@ def binding(data: dict, key: str) -> str | None:
         return None
     value = bindings.get(key)
     return value if isinstance(value, str) and value else None
+
+
+def schedule_active(schedule: dict, now: datetime) -> bool:
+    """Returner om lokal tid er innenfor valgt ukedag og klokkevindu."""
+    if not isinstance(schedule, dict):
+        return False
+    try:
+        weekdays = {int(day) for day in schedule.get("weekdays", ())}
+        start = _clock_minutes(schedule.get("start"))
+        end = _clock_minutes(schedule.get("end"))
+    except (TypeError, ValueError):
+        return False
+    if not weekdays or start is None or end is None or start == end:
+        return False
+
+    minute = now.hour * 60 + now.minute
+    weekday = now.weekday()
+    if start < end:
+        return weekday in weekdays and start <= minute < end
+    if minute >= start:
+        return weekday in weekdays
+    return minute < end and (weekday - 1) % 7 in weekdays
+
+
+def _clock_minutes(value) -> int | None:
+    if not isinstance(value, str):
+        return None
+    parts = value.split(":")
+    if len(parts) != 2 or any(len(part) != 2 or not part.isdigit() for part in parts):
+        return None
+    hour, minute = (int(part) for part in parts)
+    if hour > 23 or minute > 59:
+        return None
+    return hour * 60 + minute

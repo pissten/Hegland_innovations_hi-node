@@ -57,6 +57,8 @@ def _state(**overrides) -> RoleState:
             "light": (5, 10),
         },
         grunnvarme_timeplan=False,
+        grunnvarme_schedule_enabled=None,
+        grunnvarme_in_schedule=False,
         grunnvarme_hours_per_day=0.0,
         grunnvarme_hours_today=0.0,
         frost_enabled=False,
@@ -165,6 +167,37 @@ class BrainTests(unittest.TestCase):
         idle = decide(_state(grunnvarme_timeplan=True), T0)
         self.assertTrue(idle.oven)
         self.assertEqual(idle.reason, "grunnvarme")
+
+    def test_grunnvarme_schedule_requires_enable_and_active_window(self):
+        disabled = decide(
+            _state(
+                grunnvarme_timeplan=True,
+                grunnvarme_schedule_enabled=False,
+                grunnvarme_in_schedule=True,
+            ),
+            T0,
+        )
+        outside = decide(
+            _state(
+                grunnvarme_timeplan=True,
+                grunnvarme_schedule_enabled=True,
+                grunnvarme_in_schedule=False,
+            ),
+            T0,
+        )
+        active = decide(
+            _state(
+                grunnvarme_timeplan=True,
+                grunnvarme_schedule_enabled=True,
+                grunnvarme_in_schedule=True,
+            ),
+            T0,
+        )
+
+        self.assertFalse(disabled.oven)
+        self.assertFalse(outside.oven)
+        self.assertTrue(active.oven)
+        self.assertEqual(active.reason, "grunnvarme")
 
     def test_frost_is_last_and_needs_temperature(self):
         missing = decide(_state(frost_enabled=True, temperature_c=None), T0)
