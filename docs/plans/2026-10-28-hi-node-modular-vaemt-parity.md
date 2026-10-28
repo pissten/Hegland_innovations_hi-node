@@ -28,8 +28,9 @@
 | `grunnvarme_quota` | Valgfri | — | Ovn: timer per dag | Som i dag |
 | `grunnvarme_schedule` | Valgfri | ukedager + fra/til (i entry data) | Ovn: Timeplan på/av + schedule-entiteter | Erstatter «bare boolean» |
 | `harvia_12h` | Valgfri («Bruker Harvia?») | `heater_power_entity`, valgfri `remaining_time_entity` | Ny boks **Harvia** eller under Ovn | Dual-cycle reset a la `sauna_reset_cycle` |
-| `override_timers` | Valgfri / fase 2 | — | Manuell + gjenstående tid | 1t auto-av som Væmt |
-| `runtime_alarm` | Valgfri / fase 2 | — | Anlegg/Ovn: alarm | desired≠actual |
+| `override_timers` | Fase 2 (anbefalt på) | — | Manuell + gjenstår (sensor) | Timer + fysisk detect i HI-node; dashboard valgfritt |
+| `runtime_alarm` | Fase 2 valgfri | terskel sekunder | Anlegg/Ovn: avvik-alarm | desired≠actual |
+| `runtime_notify` | Fase 2 valgfri | notify-mål | — (eller attributt) | Push ved alarm / kritiske hendelser |
 
 Config entry `data` (skisse):
 
@@ -248,10 +249,39 @@ Webhook-kommandoer ignoreres/overstyres i fallback slik i dag (iCal-vindu).
 
 ---
 
-### Task 9 (fase 2, etter v0.2): Override-timere + runtime-alarm
+### Task 9 (fase 2, etter v0.2): Override-motor + valgfrie alarm/notify-moduler
 
-- 1t override-timer + detect fra fysisk toggle (context.user_id) — port fra Væmt override-* automations
-- Alarm binary_sensor når desired oven on men power/HKL off i X sekunder + notify-hook (valgfri notify service i bindings)
+**Prinsipp (avklart med Christian):** Samme robusthet som Væmt **uten å stole på Lovelace-kort**. Dashboard/template er valgfri UX oppå HI-node-entiteter — motoren ligger i integrasjonen.
+
+#### 9a — Override-motor i HI-node (ikke dashboard-avhengig)
+
+Port fra Væmt `override_*`-automasjoner inn i runtime/brain:
+
+- Manuell ovn/dør/lys beholder brytere (som i dag).
+- Når override slås PÅ (fra bryter, tjeneste, eller fysisk detect): start **timer** (default 1 t, number i oppsett/boks).
+- Når timer utløper: clear override → tilbake til auto (booking/iCal/grunnvarme/frost).
+- **Detect fysisk toggle:** state-endring på bundet switch med `context.user_id` satt (menneske) → sett override + start timer; ignorér endringer fra HI-node selv (`user_id` None).
+- Valgfri sensor «Override gjenstår» (minutter) per rolle — kort/dashboard kan vise den, men trengs ikke for at logikken skal virke.
+- Feature-flag f.eks. `override_timers` (default on for nye anlegg, eller alltid aktiv når I/O finnes — besluttes i implementasjon; skal kunne slås av i options).
+
+Dashboard-template (Væmt-default) kommer separat og **kun** styrer/viser HI-node-entiteter — ingen egen timer-logikk i kortet.
+
+#### 9b — Alarm-modul (valgfri i oppsett)
+
+- Feature `runtime_alarm`.
+- Binary sensor f.eks. «Ovn-avvik»: desired oven on, men HKL-oven (og/eller Harvia power hvis modul) er off i X sekunder (number, default ~30–60 s).
+- Synlig i Anlegg- eller Ovn-boks.
+- Uten modul: ingen alarm-entitet.
+
+#### 9c — Notify-modul (valgfri i oppsett, egen fra alarm)
+
+- Feature `runtime_notify`.
+- Binding: `notify_service` (eller HA notify entity / mobile_app-mål) i config.
+- Når alarm går PÅ (og evt. ved Harvia-reset feedback): kall notify.
+- Kan brukes uten alarm-modul senere til andre hendelser; v1: primært koblet til runtime_alarm.
+- Uten modul: ingen push — kun entiteter i HA.
+
+**Oppsett:** Config/options-steg «Drift» med toggles Alarm + Notify + bindinger/tersikler.
 
 Egne commits; ikke blokker v0.2-leveranse.
 
