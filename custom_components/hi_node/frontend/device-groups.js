@@ -41,9 +41,6 @@ const SUFFIX_GROUP = {
   frost_c: "oven",
   frost_hysteresis_c: "oven",
   frost_off_c: "oven",
-  climate_entity: "climate",
-  climate_current: "climate",
-  climate_target: "climate",
   booking_c: "climate",
   grunnvarme_c: "climate",
   default_c: "climate",
@@ -91,14 +88,7 @@ const SUFFIX_ORDER = {
     "margin_oven_pre",
     "margin_oven_post",
   ],
-  climate: [
-    "climate_entity",
-    "climate_current",
-    "climate_target",
-    "booking_c",
-    "grunnvarme_c",
-    "default_c",
-  ],
+  climate: ["linked_climate", "booking_c", "grunnvarme_c", "default_c"],
   harvia: ["harvia_remaining", "harvia_last_reset", "harvia_reset"],
 };
 
@@ -204,9 +194,6 @@ function classify(entity) {
     ["climate", "booking_c", ["booking_temperatur"]],
     ["climate", "grunnvarme_c", ["grunnvarme_temperatur"]],
     ["climate", "default_c", ["standard_temperatur"]],
-    ["climate", "climate_entity", ["climate_enhet"]],
-    ["climate", "climate_current", ["aktuell_temperatur"]],
-    ["climate", "climate_target", ["settpunkt"]],
     ["door", "margin_door_pre", ["_dor_for"]],
     ["door", "margin_door_post", ["_dor_etter"]],
     ["light", "margin_light_pre", ["_lys_for"]],
@@ -232,6 +219,37 @@ function classify(entity) {
   return null;
 }
 
+function registryEntry(page, entityId) {
+  if (!entityId || typeof entityId !== "string") {
+    return null;
+  }
+  const fromReg = (page._entityReg || []).find((entry) => entry.entity_id === entityId);
+  if (fromReg) {
+    return fromReg;
+  }
+  const fromHass = page.hass?.entities?.[entityId];
+  if (fromHass) {
+    return fromHass;
+  }
+  return { entity_id: entityId };
+}
+
+function linkedClimateEntry(page, deviceEntities) {
+  const mode = deviceEntities.find(
+    (entity) =>
+      suffixOf(entity.unique_id) === "mode" ||
+      String(entity.entity_id || "").includes("_styring")
+  );
+  const entityId = page.hass?.states?.[mode?.entity_id]?.attributes?.climate_entity;
+  return registryEntry(page, entityId);
+}
+
+const HIDDEN_SUFFIXES = new Set([
+  "climate_entity",
+  "climate_current",
+  "climate_target",
+]);
+
 function groupedEntities(page) {
   const device = page.hass?.devices?.[page.deviceId];
   if (!device || typeof page._entities !== "function") {
@@ -242,6 +260,9 @@ function groupedEntities(page) {
   let matched = 0;
   for (const entity of entities) {
     if (entity.platform && entity.platform !== "hi_node") {
+      continue;
+    }
+    if (HIDDEN_SUFFIXES.has(suffixOf(entity.unique_id))) {
       continue;
     }
     const found = classify(entity);
@@ -255,6 +276,17 @@ function groupedEntities(page) {
     }
     buckets[found.group].push({ entity, suffix: found.suffix });
     matched += 1;
+  }
+  const linked = linkedClimateEntry(page, entities);
+  if (linked) {
+    const already = buckets.climate.some(
+      (item) => item.entity.entity_id === linked.entity_id
+    );
+    if (!already) {
+      // Kun visning — endrer ikke device_id / flytter ikke enheten.
+      buckets.climate.unshift({ entity: linked, suffix: "linked_climate" });
+      matched += 1;
+    }
   }
   const ours =
     isHiNodeDevice(device) || entities.some((entity) => entity.platform === "hi_node");

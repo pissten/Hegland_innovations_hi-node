@@ -18,16 +18,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
     entities = [ModeSensor(runtime), OvenStatus(runtime), ClosedUntilSensor(runtime)]
     if has_feature(runtime.normalized, "override_timers"):
         entities.extend(OverrideRemainingSensor(runtime, role) for role in ROLES)
-    if has_feature(runtime.normalized, "climate") and binding(
-        runtime.normalized, "climate_entity"
-    ):
-        entities.extend(
-            [
-                ClimateCurrentSensor(runtime),
-                ClimateTargetSensor(runtime),
-                ClimateLinkedSensor(runtime),
-            ]
-        )
     if runtime._harvia_available():
         entities.append(HarviaLastResetSensor(runtime))
         if binding(runtime.normalized, "remaining_time_entity"):
@@ -50,11 +40,15 @@ class ModeSensor(HiEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         decision = self.runtime.decision
-        return {
+        attrs = {
             "reason": None if decision is None else decision.reason,
             "webhook": _webhook_url(self.runtime),
             "failures": self.runtime.tracker.failures,
         }
+        climate = binding(self.runtime.normalized, "climate_entity")
+        if climate:
+            attrs["climate_entity"] = climate
+        return attrs
 
 
 class OvenStatus(HiEntity, SensorEntity):
@@ -115,51 +109,6 @@ class OverrideRemainingSensor(HiEntity, SensorEntity):
     @property
     def native_value(self):
         return self.runtime.override_remaining_minutes(self._role)
-
-
-class ClimateLinkedSensor(HiEntity, SensorEntity):
-    """Viser entity_id for mappet climate."""
-
-    _attr_icon = "mdi:thermostat"
-
-    def __init__(self, runtime) -> None:
-        super().__init__(runtime, "climate_entity", "Climate-enhet", group="climate")
-
-    @property
-    def native_value(self):
-        return binding(self.runtime.normalized, "climate_entity") or "Ikke satt"
-
-
-class ClimateCurrentSensor(HiEntity, SensorEntity):
-    """Aktuell temperatur fra mappet climate."""
-
-    _attr_native_unit_of_measurement = "°C"
-    _attr_icon = "mdi:thermometer"
-
-    def __init__(self, runtime) -> None:
-        super().__init__(
-            runtime, "climate_current", "Aktuell temperatur", group="climate"
-        )
-
-    @property
-    def native_value(self):
-        return self.runtime.climate_current_temperature()
-
-
-class ClimateTargetSensor(HiEntity, SensorEntity):
-    """Settpunkt fra mappet climate."""
-
-    _attr_native_unit_of_measurement = "°C"
-    _attr_icon = "mdi:thermometer-chevron-up"
-
-    def __init__(self, runtime) -> None:
-        super().__init__(
-            runtime, "climate_target", "Settpunkt", group="climate"
-        )
-
-    @property
-    def native_value(self):
-        return self.runtime.climate_target_temperature()
 
 
 class HarviaRemainingSensor(HiEntity, SensorEntity):
