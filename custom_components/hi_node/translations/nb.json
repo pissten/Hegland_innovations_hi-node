@@ -97,7 +97,7 @@
       "switches": "Ovn, dør og lys må velges",
       "frost_binding": "Frostvakt krever en climate-entitet eller temperatursensor",
       "harvia_binding": "Harvia 12-timers sikring krever en strømbryter",
-      "notify_binding": "Pushvarsel krever at du velger en notify-enhet"
+      "notify_binding": "Pushvarsel krever at du velger en notify-enhet",
       "schedule": "Velg minst én ukedag og bruk klokkeslett i formatet HH:MM"
     },
     "abort": {
@@ -197,7 +197,7 @@
       "switches": "Ovn, dør og lys må velges",
       "frost_binding": "Frostvakt krever en climate-entitet eller temperatursensor",
       "harvia_binding": "Harvia 12-timers sikring krever en strømbryter",
-      "notify_binding": "Pushvarsel krever at du velger en notify-enhet"
+      "notify_binding": "Pushvarsel krever at du velger en notify-enhet",
       "schedule": "Velg minst én ukedag og bruk klokkeslett i formatet HH:MM"
     }
   }
