@@ -230,11 +230,18 @@ def next_frost_calling(
     hysteresis_c: float,
     frost_off_c: float,
 ) -> bool:
-    """Beregn neste frostbehov og behold tilstanden i hystereseområdet."""
-    if not feature_enabled or not switch_enabled or temperature_c is None:
+    """Frost PÅ under frost_c−hysterese, AV ved frost_off_c.
+
+    Mangler temperatur midlertidig (sensor unavailable) beholdes forrige
+    tilstand, så korte dropp ikke togler ovnen.
+    """
+    if not feature_enabled or not switch_enabled:
         return False
-    if temperature_c < frost_c + hysteresis_c:
+    if temperature_c is None:
+        return bool(previous)
+    on_below = float(frost_c) - float(hysteresis_c)
+    if temperature_c < on_below:
         return True
-    if temperature_c >= frost_off_c:
+    if temperature_c >= float(frost_off_c):
         return False
     return bool(previous)

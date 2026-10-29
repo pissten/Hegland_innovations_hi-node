@@ -265,6 +265,28 @@ def build_module(profile_id: str, slug: str, index: int, user_input: dict) -> di
     }
 
 
+def module_label(index: int, module: dict) -> str:
+    """Lesbar linje for I/O-listen i options."""
+    roles = module.get("roles") or {}
+    profile = module.get("profile") or "?"
+    device = (module.get("device_name") or "").strip()
+    head = device or profile
+    return (
+        f"{index + 1}. {head} — "
+        f"ovn={roles.get('oven') or '-'}, "
+        f"dør={roles.get('door') or '-'}, "
+        f"lys={roles.get('light') or '-'}"
+    )
+
+
+def modules_description(modules: list) -> str:
+    if not modules:
+        return "Ingen I/O-bindinger er lagret ennå."
+    lines = ["Allerede lagret:"]
+    lines.extend(module_label(index, module) for index, module in enumerate(modules))
+    return "\n".join(lines)
+
+
 class _FeatureStepsMixin:
     """Felles modulsteg for første oppsett og options."""
 
@@ -493,7 +515,7 @@ class OptionsFlowHandler(_FeatureStepsMixin, config_entries.OptionsFlow):
     async def async_step_init(self, user_input=None):
         return self.async_show_menu(
             step_id="init",
-            menu_options=["add_io", "features"],
+            menu_options=["add_io", "manage_io", "features"],
         )
 
     async def async_step_add_io(self, user_input=None):
@@ -502,9 +524,51 @@ class OptionsFlowHandler(_FeatureStepsMixin, config_entries.OptionsFlow):
             if user_input["profile"] == "existing_switches":
                 return await self.async_step_switches()
             return await self.async_step_hkl_er6()
+        current = normalize_entry_data(dict(self.config_entry.data))
         return self.async_show_form(
             step_id="add_io",
             data_schema=vol.Schema({vol.Required("profile"): _profile_selector()}),
+            description_placeholders={
+                "modules": modules_description(current.get("modules") or [])
+            },
+        )
+
+    async def async_step_manage_io(self, user_input=None):
+        data = normalize_entry_data(dict(self.config_entry.data))
+        modules = list(data.get("modules") or [])
+        if not modules:
+            return self.async_abort(reason="no_modules")
+        options = [
+            {"value": str(index), "label": module_label(index, module)}
+            for index, module in enumerate(modules)
+        ]
+        if user_input is not None:
+            remove = {str(value) for value in (user_input.get("remove") or [])}
+            kept = [
+                module
+                for index, module in enumerate(modules)
+                if str(index) not in remove
+            ]
+            data["modules"] = kept
+            self.hass.config_entries.async_update_entry(self.config_entry, data=data)
+            self.hass.async_create_task(
+                self.hass.config_entries.async_reload(self.config_entry.entry_id)
+            )
+            return self.async_create_entry(title="", data={})
+        return self.async_show_form(
+            step_id="manage_io",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional("remove", default=[]): SelectSelector(
+                        SelectSelectorConfig(
+                            options=options,
+                            multiple=True,
+                            mode=SelectSelectorMode.LIST,
+                        )
+                    )
+                }
+            ),
+            description_placeholders={"modules": modules_description(modules)},
         )
 
     async def async_step_features(self, user_input=None):
@@ -532,6 +596,7 @@ class OptionsFlowHandler(_FeatureStepsMixin, config_entries.OptionsFlow):
 
     async def async_step_switches(self, user_input=None):
         errors = {}
+        current = normalize_entry_data(dict(self.config_entry.data))
         if user_input is not None:
             if not all(user_input.get(role) for role in ROLES):
                 errors["base"] = "switches"
@@ -547,6 +612,9 @@ class OptionsFlowHandler(_FeatureStepsMixin, config_entries.OptionsFlow):
                 }
             ),
             errors=errors,
+            description_placeholders={
+                "modules": modules_description(current.get("modules") or [])
+            },
         )
 
     async def async_step_hkl_er6(self, user_input=None):

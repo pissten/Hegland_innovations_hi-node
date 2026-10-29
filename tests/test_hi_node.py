@@ -220,24 +220,15 @@ class BrainTests(unittest.TestCase):
         self.assertEqual(cold.reason, "frostvakt")
 
     def test_frost_hysteresis_keeps_previous_state_inside_band(self):
-        calling = next_frost_calling(
-            previous=False,
-            feature_enabled=True,
-            switch_enabled=True,
-            temperature_c=20.5,
-            frost_c=20.0,
-            hysteresis_c=1.0,
-            frost_off_c=40.0,
-        )
-        self.assertTrue(calling)
+        # PÅ under frost_c − hysterese (20 − 2 = 18)
         self.assertTrue(
             next_frost_calling(
-                previous=calling,
+                previous=False,
                 feature_enabled=True,
                 switch_enabled=True,
-                temperature_c=30.0,
+                temperature_c=17.5,
                 frost_c=20.0,
-                hysteresis_c=1.0,
+                hysteresis_c=2.0,
                 frost_off_c=40.0,
             )
         )
@@ -246,9 +237,21 @@ class BrainTests(unittest.TestCase):
                 previous=False,
                 feature_enabled=True,
                 switch_enabled=True,
+                temperature_c=19.0,
+                frost_c=20.0,
+                hysteresis_c=2.0,
+                frost_off_c=40.0,
+            )
+        )
+        # Hold i båndet mellom på-grense og frost_off
+        self.assertTrue(
+            next_frost_calling(
+                previous=True,
+                feature_enabled=True,
+                switch_enabled=True,
                 temperature_c=30.0,
                 frost_c=20.0,
-                hysteresis_c=1.0,
+                hysteresis_c=2.0,
                 frost_off_c=40.0,
             )
         )
@@ -259,30 +262,49 @@ class BrainTests(unittest.TestCase):
                 switch_enabled=True,
                 temperature_c=40.0,
                 frost_c=20.0,
-                hysteresis_c=1.0,
+                hysteresis_c=2.0,
                 frost_off_c=40.0,
             )
         )
 
-    def test_frost_never_calls_without_temperature_or_when_disabled(self):
-        for feature_enabled, switch_enabled, temperature_c in (
-            (True, True, None),
-            (False, True, 5.0),
-            (True, False, 5.0),
-        ):
+    def test_frost_keeps_previous_when_temperature_missing(self):
+        self.assertTrue(
+            next_frost_calling(
+                previous=True,
+                feature_enabled=True,
+                switch_enabled=True,
+                temperature_c=None,
+                frost_c=20.0,
+                hysteresis_c=2.0,
+                frost_off_c=40.0,
+            )
+        )
+        self.assertFalse(
+            next_frost_calling(
+                previous=False,
+                feature_enabled=True,
+                switch_enabled=True,
+                temperature_c=None,
+                frost_c=20.0,
+                hysteresis_c=2.0,
+                frost_off_c=40.0,
+            )
+        )
+
+    def test_frost_never_calls_when_disabled(self):
+        for feature_enabled, switch_enabled in ((False, True), (True, False)):
             with self.subTest(
                 feature_enabled=feature_enabled,
                 switch_enabled=switch_enabled,
-                temperature_c=temperature_c,
             ):
                 self.assertFalse(
                     next_frost_calling(
                         previous=True,
                         feature_enabled=feature_enabled,
                         switch_enabled=switch_enabled,
-                        temperature_c=temperature_c,
+                        temperature_c=5.0,
                         frost_c=20.0,
-                        hysteresis_c=1.0,
+                        hysteresis_c=2.0,
                         frost_off_c=40.0,
                     )
                 )

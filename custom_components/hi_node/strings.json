@@ -110,14 +110,22 @@
         "title": "Endre HI-node",
         "menu_options": {
           "add_io": "Legg til I/O-kort",
+          "manage_io": "Vis / fjern I/O-bindinger",
           "features": "Oppdater funksjoner og bindinger"
         }
       },
       "add_io": {
         "title": "Legg til I/O-kort",
-        "description": "Samme liste som ved første oppsett. Hvert kort får eget enhetsnavn.",
+        "description": "Nye bindinger legges til uten å slette gamle. Bruk «Vis / fjern I/O-bindinger» for å rydde.\n\n{modules}",
         "data": {
           "profile": "Kort"
+        }
+      },
+      "manage_io": {
+        "title": "Vis / fjern I/O-bindinger",
+        "description": "Kryss av bindingene som skal fjernes. Ukryssede beholdes.\n\n{modules}",
+        "data": {
+          "remove": "Fjern valgte"
         }
       },
       "features": {
@@ -176,6 +184,7 @@
       },
       "switches": {
         "title": "Eksisterende brytere",
+        "description": "Velg ovn, dør og lys. Dette legges til som ny binding.\n\n{modules}",
         "data": {
           "oven": "Ovn",
           "door": "Dør",
@@ -199,6 +208,9 @@
       "harvia_binding": "Harvia 12-timers sikring krever en strømbryter",
       "notify_binding": "Pushvarsel krever at du velger en notify-enhet",
       "schedule": "Velg minst én ukedag og bruk klokkeslett i formatet HH:MM"
+    },
+    "abort": {
+      "no_modules": "Ingen I/O-bindinger å vise"
     }
   }
 }
