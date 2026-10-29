@@ -3,7 +3,7 @@
   "name": "HI-node",
   "codeowners": ["@pissten"],
   "config_flow": true,
-  "dependencies": ["frontend", "webhook"],
+  "dependencies": ["calendar", "frontend", "webhook"],
   "documentation": "https://github.com/pissten/Hegland_innovations_hi-node",
   "issue_tracker": "https://github.com/pissten/Hegland_innovations_hi-node/issues",
   "iot_class": "local_polling",

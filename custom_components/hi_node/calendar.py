@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
 
 from homeassistant.components.calendar import (
@@ -9,63 +10,82 @@ from homeassistant.components.calendar import (
     CalendarEntityFeature,
     CalendarEvent,
 )
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
-from .entity import HiEntity
 from .features import has_feature
 from .grunnvarme_calendar import (
     DEFAULT_SUMMARY,
     calendar_active,
     create_event_record,
-    delete_event_record,
     expand_events,
-    update_event_record,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
     runtime = hass.data[DOMAIN][entry.entry_id]
     if not has_feature(runtime.normalized, "grunnvarme_schedule"):
         return
-    async_add_entities([GrunnvarmeCalendar(runtime)])
+    entity = GrunnvarmeCalendar(runtime)
+    async_add_entities([entity])
+    _LOGGER.info("HI-node grunnvarme-kalender registrert for %s", entry.title)
 
 
-class GrunnvarmeCalendar(HiEntity, CalendarEntity):
+class GrunnvarmeCalendar(CalendarEntity):
     """Kalender «Grunnvarme» — synlig og redigerbar i vanlig kalender-UI."""
 
+    _attr_has_entity_name = True
+    _attr_name = "Grunnvarme"
+    _attr_icon = "mdi:calendar-clock"
+    _attr_should_poll = False
     _attr_supported_features = (
         CalendarEntityFeature.CREATE_EVENT
         | CalendarEntityFeature.DELETE_EVENT
         | CalendarEntityFeature.UPDATE_EVENT
     )
-    _attr_icon = "mdi:calendar-clock"
 
     def __init__(self, runtime) -> None:
-        super().__init__(
-            runtime, "grunnvarme_calendar", "Grunnvarme", group="oven"
+        self.runtime = runtime
+        self._attr_unique_id = f"{runtime.entry.entry_id}_grunnvarme_calendar"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, runtime.entry.entry_id)},
+            name=runtime.entry.title,
+            manufacturer="Hegland Innovations",
+            model="HI-node",
         )
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(self.runtime.listen(self.async_write_ha_state))
+        _LOGGER.info("HI-node kalender lagt til som %s", self.entity_id)
 
     @property
     def event(self) -> CalendarEvent | None:
-        now = dt_util.now()
-        items = expand_events(
-            self.runtime.grunnvarme_calendar_events(),
-            now,
-            now + timedelta(days=14),
-        )
-        if not items:
+        try:
+            now = dt_util.now()
+            items = expand_events(
+                self.runtime.grunnvarme_calendar_events(),
+                now,
+                now + timedelta(days=14),
+            )
+            if not items:
+                return None
+            item = items[0]
+            return CalendarEvent(
+                start=item["start"],
+                end=item["end"],
+                summary=item["summary"],
+                description=item.get("description"),
+                uid=item["uid"],
+                rrule=item.get("rrule"),
+                recurrence_id=item.get("recurrence_id"),
+            )
+        except Exception:
+            _LOGGER.exception("Kunne ikke beregne neste grunnvarme-hendelse")
             return None
-        item = items[0]
-        return CalendarEvent(
-            start=item["start"],
-            end=item["end"],
-            summary=item["summary"],
-            description=item.get("description"),
-            uid=item["uid"],
-            rrule=item.get("rrule"),
-            recurrence_id=item.get("recurrence_id"),
-        )
 
     @property
     def extra_state_attributes(self):
