@@ -12,6 +12,8 @@ sys.path.insert(0, str(ROOT / "custom_components"))
 from hi_node.config_helpers import (  # noqa: E402
     build_features_from_user_input,
     build_schedule_from_user_input,
+    dedupe_modules,
+    is_duplicate_module,
     validate_bindings,
     validate_schedule_input,
 )
@@ -111,6 +113,28 @@ class ConfigHelperTests(unittest.TestCase):
                 {"weekdays": ["0"], "start": "06:00", "end": "22:00"}
             )
         )
+
+    def test_identical_io_modules_are_ignored_as_duplicates(self):
+        first = {
+            "profile": "existing_switches",
+            "roles": {
+                "oven": "switch.hkl_er6_output1",
+                "door": "switch.hkl_er6_output2",
+                "light": "switch.hkl_er6_output3",
+            },
+        }
+        same = dict(first)
+        other = {
+            "profile": "existing_switches",
+            "roles": {
+                "oven": "switch.other",
+                "door": "switch.hkl_er6_output2",
+                "light": "switch.hkl_er6_output3",
+            },
+        }
+        self.assertTrue(is_duplicate_module([first], same))
+        self.assertFalse(is_duplicate_module([first], other))
+        self.assertEqual(dedupe_modules([first, same, other]), [first, other])
 
 
 if __name__ == "__main__":

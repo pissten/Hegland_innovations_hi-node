@@ -23,6 +23,8 @@ from homeassistant.helpers.selector import (
 from .config_helpers import (
     build_features_from_user_input,
     build_schedule_from_user_input,
+    dedupe_modules,
+    is_duplicate_module,
     validate_bindings,
     validate_schedule_input,
 )
@@ -535,7 +537,11 @@ class OptionsFlowHandler(_FeatureStepsMixin, config_entries.OptionsFlow):
 
     async def async_step_manage_io(self, user_input=None):
         data = normalize_entry_data(dict(self.config_entry.data))
-        modules = list(data.get("modules") or [])
+        raw_modules = list(data.get("modules") or [])
+        modules = dedupe_modules(raw_modules)
+        if modules != raw_modules:
+            data["modules"] = modules
+            self.hass.config_entries.async_update_entry(self.config_entry, data=data)
         if not modules:
             return self.async_abort(reason="no_modules")
         options = [
@@ -544,11 +550,13 @@ class OptionsFlowHandler(_FeatureStepsMixin, config_entries.OptionsFlow):
         ]
         if user_input is not None:
             remove = {str(value) for value in (user_input.get("remove") or [])}
-            kept = [
-                module
-                for index, module in enumerate(modules)
-                if str(index) not in remove
-            ]
+            kept = dedupe_modules(
+                [
+                    module
+                    for index, module in enumerate(modules)
+                    if str(index) not in remove
+                ]
+            )
             data["modules"] = kept
             self.hass.config_entries.async_update_entry(self.config_entry, data=data)
             self.hass.async_create_task(
@@ -639,8 +647,21 @@ class OptionsFlowHandler(_FeatureStepsMixin, config_entries.OptionsFlow):
 
     def _add(self, user_input: dict):
         data = normalize_entry_data(dict(self.config_entry.data))
-        modules = list(data.get("modules") or [])
-        modules.append(build_module(self._profile, data["slug"], len(modules) + 1, user_input))
+        modules = dedupe_modules(list(data.get("modules") or []))
+        candidate = build_module(
+            self._profile, data["slug"], len(modules) + 1, user_input
+        )
+        if is_duplicate_module(modules, candidate):
+            if modules != list(data.get("modules") or []):
+                data["modules"] = modules
+                self.hass.config_entries.async_update_entry(
+                    self.config_entry, data=data
+                )
+                self.hass.async_create_task(
+                    self.hass.config_entries.async_reload(self.config_entry.entry_id)
+                )
+            return self.async_abort(reason="module_exists")
+        modules.append(candidate)
         data["modules"] = modules
         self.hass.config_entries.async_update_entry(self.config_entry, data=data)
         self.hass.async_create_task(

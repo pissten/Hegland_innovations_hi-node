@@ -9,6 +9,35 @@ from .features import DEFAULT_FEATURES, FEATURE_KEYS
 _CLOCK_PATTERN = re.compile(r"(?:[01]\d|2[0-3]):[0-5]\d")
 
 
+def module_binding_key(module: dict) -> tuple:
+    """Identitet for et I/O-oppsett: profil + ovn/dør/lys."""
+    roles = module.get("roles") or {}
+    return (
+        str(module.get("profile") or ""),
+        str(roles.get("oven") or ""),
+        str(roles.get("door") or ""),
+        str(roles.get("light") or ""),
+    )
+
+
+def is_duplicate_module(modules: list, candidate: dict) -> bool:
+    key = module_binding_key(candidate)
+    return any(module_binding_key(module) == key for module in modules)
+
+
+def dedupe_modules(modules: list) -> list:
+    """Behold første av hvert like oppsett."""
+    seen: set[tuple] = set()
+    unique: list = []
+    for module in modules:
+        key = module_binding_key(module)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(module)
+    return unique
+
+
 def build_features_from_user_input(user_input: dict) -> dict:
     """Bygg en komplett feature-tabell fra et skjemasvar."""
     return {

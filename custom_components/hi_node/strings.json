@@ -210,7 +210,8 @@
       "schedule": "Velg minst én ukedag og bruk klokkeslett i formatet HH:MM"
     },
     "abort": {
-      "no_modules": "Ingen I/O-bindinger å vise"
+      "no_modules": "Ingen I/O-bindinger å vise",
+      "module_exists": "Dette I/O-oppsettet finnes allerede og ble ikke lagt til på nytt"
     }
   }
 }
