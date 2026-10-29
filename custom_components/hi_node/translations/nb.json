@@ -71,7 +71,7 @@
       },
       "schedule": {
         "title": "Grunnvarme-timeplan",
-        "description": "Velg ukedager og tidsrom. Klokkeslett skrives som HH:MM.",
+        "description": "Velg ukedager og tidsrom (HH:MM). Dette blir startpunkt for kalenderen «Grunnvarme», som du siden kan endre i vanlig kalender-UI.",
         "data": {
           "weekdays": "Ukedager",
           "start": "Fra",
@@ -163,7 +163,7 @@
       },
       "schedule": {
         "title": "Grunnvarme-timeplan",
-        "description": "Velg ukedager og tidsrom. Klokkeslett skrives som HH:MM.",
+        "description": "Velg ukedager og tidsrom (HH:MM). Dette blir startpunkt for kalenderen «Grunnvarme», som du siden kan endre i vanlig kalender-UI.",
         "data": {
           "weekdays": "Ukedager",
           "start": "Fra",

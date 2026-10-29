@@ -43,6 +43,12 @@ from .margins import (
 )
 from .dashboard import compile_message, dashboard_candidates
 from .features import binding, has_feature, normalize_entry_data, schedule_active
+from .grunnvarme_calendar import (
+    calendar_active,
+    delete_event_record,
+    ensure_seeded,
+    update_event_record,
+)
 from .health import HealthTracker
 from .profiles import profile_by_id, render_profile
 from .runtime_logic import (
@@ -66,6 +72,7 @@ def _blank_state() -> dict:
         "fallback": False,
         "last_failure": None,
         "grunnvarme_timeplan": False,
+        "grunnvarme_calendar": [],
         "grunnvarme_hours_per_day": 0,
         "grunnvarme_hours_today": 0,
         "grunnvarme_day": None,
@@ -175,6 +182,15 @@ class HiNodeRuntime:
         if has_feature(self.normalized, "frost") and isinstance(entry_temps, dict):
             for key in ("frost_c", "frost_hysteresis_c", "frost_off_c"):
                 self.data[key] = self.normalized["temps"][key]
+        if has_feature(self.normalized, "grunnvarme_schedule"):
+            seeded = ensure_seeded(
+                self.data.get("grunnvarme_calendar"),
+                self.normalized.get("schedule"),
+                dt_util.now(),
+            )
+            if seeded != list(self.data.get("grunnvarme_calendar") or []):
+                self.data["grunnvarme_calendar"] = seeded
+                await self.store.async_save(self.data)
         self.tracker.failures = int(self.data.get("failures") or 0)
         self.tracker.fallback = bool(self.data.get("fallback"))
         last = self.data.get("last_failure")
@@ -529,6 +545,40 @@ class HiNodeRuntime:
             self.data["grunnvarme_hours_today"] = 0
             self.data["grunnvarme_mark"] = None
 
+    def grunnvarme_calendar_events(self) -> list:
+        events = self.data.get("grunnvarme_calendar")
+        return list(events) if isinstance(events, list) else []
+
+    def _grunnvarme_in_schedule(self, now) -> bool:
+        events = self.grunnvarme_calendar_events()
+        if events:
+            return calendar_active(events, now)
+        return schedule_active(self.normalized.get("schedule"), now)
+
+    async def async_grunnvarme_calendar_create(self, record: dict) -> None:
+        events = self.grunnvarme_calendar_events()
+        events.append(record)
+        self.data["grunnvarme_calendar"] = events
+        await self.store.async_save(self.data)
+        await self.async_apply_now()
+        self._notify()
+
+    async def async_grunnvarme_calendar_update(self, uid: str, **kwargs) -> None:
+        self.data["grunnvarme_calendar"] = update_event_record(
+            self.grunnvarme_calendar_events(), uid, **kwargs
+        )
+        await self.store.async_save(self.data)
+        await self.async_apply_now()
+        self._notify()
+
+    async def async_grunnvarme_calendar_delete(self, uid: str) -> None:
+        self.data["grunnvarme_calendar"] = delete_event_record(
+            self.grunnvarme_calendar_events(), uid
+        )
+        await self.store.async_save(self.data)
+        await self.async_apply_now()
+        self._notify()
+
     def role_state(self, now):
         margins = {
             role: tuple(self.data["margins"].get(role) or DEFAULT_MARGINS[role])
@@ -548,7 +598,7 @@ class HiNodeRuntime:
             grunnvarme_timeplan=bool(self.data.get("grunnvarme_timeplan")),
             grunnvarme_schedule_enabled=schedule_enabled,
             grunnvarme_in_schedule=(
-                schedule_active(self.normalized.get("schedule"), now)
+                self._grunnvarme_in_schedule(now)
                 if schedule_enabled is not None
                 else False
             ),

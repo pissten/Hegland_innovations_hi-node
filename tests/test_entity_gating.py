@@ -50,6 +50,14 @@ def _install_homeassistant_stubs() -> None:
     )
     sys.modules[binary_sensor.__name__] = binary_sensor
 
+    calendar = types.ModuleType("homeassistant.components.calendar")
+    calendar.CalendarEntity = type("CalendarEntity", (), {})
+    calendar.CalendarEvent = type("CalendarEvent", (), {})
+    calendar.CalendarEntityFeature = types.SimpleNamespace(
+        CREATE_EVENT=1, DELETE_EVENT=2, UPDATE_EVENT=4
+    )
+    sys.modules[calendar.__name__] = calendar
+
     network = types.ModuleType("homeassistant.helpers.network")
     network.get_url = lambda *args, **kwargs: "http://homeassistant.local"
     device_registry = types.ModuleType("homeassistant.helpers.device_registry")
@@ -75,7 +83,7 @@ def _install_homeassistant_stubs() -> None:
 
 _install_homeassistant_stubs()
 
-from hi_node import binary_sensor, button, number, sensor, switch  # noqa: E402
+from hi_node import binary_sensor, button, calendar, number, sensor, switch  # noqa: E402
 from hi_node.const import DOMAIN  # noqa: E402
 from hi_node.features import binding, has_feature, normalize_entry_data  # noqa: E402
 
@@ -167,6 +175,8 @@ class EntityGatingTests(unittest.TestCase):
             "grunnvarme_schedule_active",
             _suffixes(binary_sensor, schedule),
         )
+        self.assertIn("grunnvarme_calendar", _suffixes(calendar, schedule))
+        self.assertNotIn("grunnvarme_calendar", _suffixes(calendar, quota))
 
     def test_climate_frost_and_harvia_entities_exist_when_enabled(self):
         runtime = _Runtime(
