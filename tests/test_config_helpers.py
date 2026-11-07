@@ -14,6 +14,7 @@ from hi_node.config_helpers import (  # noqa: E402
     build_schedule_from_user_input,
     dedupe_modules,
     is_duplicate_module,
+    merge_bindings_from_input,
     validate_bindings,
     validate_schedule_input,
 )
@@ -36,45 +37,87 @@ class ConfigHelperTests(unittest.TestCase):
     def test_frost_requires_climate_or_temperature_binding(self):
         features = build_features_from_user_input({"frost": True})
 
-        self.assertEqual(validate_bindings(features, {}), "frost_binding")
-        self.assertIsNone(
+        errors = validate_bindings(features, {})
+        self.assertEqual(errors.get("temperature_entity"), "frost_binding")
+        self.assertEqual(errors.get("base"), "bindings_incomplete")
+        self.assertEqual(
             validate_bindings(
                 features,
                 {"temperature_entity": "sensor.badstue_temperature"},
-            )
+            ),
+            {},
         )
-        self.assertIsNone(
+        self.assertEqual(
             validate_bindings(
                 features,
                 {"climate_entity": "climate.badstue"},
-            )
+            ),
+            {},
         )
 
     def test_harvia_requires_power_binding(self):
         features = build_features_from_user_input({"harvia_12h": True})
 
-        self.assertEqual(validate_bindings(features, {}), "harvia_binding")
-        self.assertIsNone(
+        errors = validate_bindings(features, {})
+        self.assertEqual(errors.get("heater_power_entity"), "harvia_binding")
+        self.assertEqual(
             validate_bindings(
                 features,
                 {"heater_power_entity": "switch.harvia_power"},
-            )
+            ),
+            {},
         )
 
     def test_notify_requires_notify_entity(self):
         features = build_features_from_user_input({"runtime_notify": True})
 
-        self.assertEqual(validate_bindings(features, {}), "notify_binding")
         self.assertEqual(
-            validate_bindings(features, {"notify_entity": "mobile_app_phone"}),
+            validate_bindings(features, {}).get("notify_entity"),
             "notify_binding",
         )
-        self.assertIsNone(
+        self.assertEqual(
+            validate_bindings(features, {"notify_entity": "mobile_app_phone"}).get(
+                "notify_entity"
+            ),
+            "notify_binding",
+        )
+        self.assertEqual(
             validate_bindings(
                 features,
                 {"notify_entity": "notify.mobile_app_phone"},
-            )
+            ),
+            {},
         )
+
+    def test_cleared_required_binding_blocks_save(self):
+        features = build_features_from_user_input({"harvia_12h": True, "climate": True})
+        errors = validate_bindings(
+            features,
+            {"climate_entity": None, "heater_power_entity": ""},
+        )
+        self.assertEqual(errors.get("climate_entity"), "required_binding")
+        self.assertEqual(errors.get("heater_power_entity"), "harvia_binding")
+
+    def test_disabled_features_clear_bindings_on_merge(self):
+        features = build_features_from_user_input({"climate": False, "harvia_12h": False})
+        merged = merge_bindings_from_input(
+            {
+                "climate_entity": "climate.boblebad",
+                "heater_power_entity": "switch.boblebad_effektbegrensning",
+            },
+            features,
+        )
+        self.assertIsNone(merged["climate_entity"])
+        self.assertIsNone(merged["heater_power_entity"])
+
+    def test_enabled_feature_keeps_submitted_binding(self):
+        features = build_features_from_user_input({"harvia_12h": True})
+        merged = merge_bindings_from_input(
+            {"heater_power_entity": "switch.harvia_power"},
+            features,
+        )
+        self.assertEqual(merged["heater_power_entity"], "switch.harvia_power")
+        self.assertIsNone(merged["climate_entity"])
 
     def test_schedule_converts_weekdays_to_integers(self):
         schedule = build_schedule_from_user_input(

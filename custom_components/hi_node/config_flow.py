@@ -25,12 +25,12 @@ from .config_helpers import (
     build_schedule_from_user_input,
     dedupe_modules,
     is_duplicate_module,
+    merge_bindings_from_input,
     validate_bindings,
     validate_schedule_input,
 )
 from .const import DOMAIN, ROLES
 from .features import (
-    DEFAULT_BINDINGS,
     DEFAULT_FEATURES,
     DEFAULT_RUNTIME,
     DEFAULT_SCHEDULE,
@@ -129,58 +129,19 @@ def _drift_schema(
     )
 
 
-def _entity_marker(key: str, current: str | None, required: bool):
-    marker = vol.Required if required else vol.Optional
-    return marker(key, default=current) if current else marker(key)
-
-
-def _bindings_schema(features: dict, current: dict | None = None) -> vol.Schema:
-    values = {**DEFAULT_BINDINGS, **(current or {})}
+def _bindings_schema(features: dict) -> vol.Schema:
+    """Alle entitet-felter er Optional (kan tømmes). Påkrav sjekkes i validate_bindings."""
     fields = {}
     if features.get("climate"):
-        fields[_entity_marker("climate_entity", values["climate_entity"], True)] = (
-            _CLIMATE
-        )
+        fields[vol.Optional("climate_entity")] = _CLIMATE
     if features.get("frost"):
-        needs_temperature = not features.get("climate")
-        fields[
-            _entity_marker(
-                "temperature_entity",
-                values["temperature_entity"],
-                needs_temperature,
-            )
-        ] = _TEMPERATURE
+        fields[vol.Optional("temperature_entity")] = _TEMPERATURE
     if features.get("harvia_12h"):
-        fields[
-            _entity_marker(
-                "heater_power_entity",
-                values["heater_power_entity"],
-                True,
-            )
-        ] = _SWITCH
-        fields[
-            _entity_marker(
-                "remaining_time_entity",
-                values["remaining_time_entity"],
-                False,
-            )
-        ] = _TEMPERATURE
+        fields[vol.Optional("heater_power_entity")] = _SWITCH
+        fields[vol.Optional("remaining_time_entity")] = _TEMPERATURE
     if features.get("runtime_notify"):
-        fields[
-            _entity_marker(
-                "notify_entity",
-                values.get("notify_entity") or values.get("notify_service"),
-                True,
-            )
-        ] = _NOTIFY
+        fields[vol.Optional("notify_entity")] = _NOTIFY
     return vol.Schema(fields)
-
-
-def _bindings_from_user_input(user_input: dict) -> dict:
-    return {
-        key: user_input.get(key) or None
-        for key in DEFAULT_BINDINGS
-    }
 
 
 def _schedule_schema(current: dict | None = None) -> vol.Schema:
@@ -314,14 +275,17 @@ class _FeatureStepsMixin:
         )
 
     async def async_step_bindings(self, user_input=None):
-        errors = {}
+        errors: dict[str, str] = {}
         features = self._draft["features"]
+        current_bindings = {
+            key: value
+            for key, value in (self._draft.get("bindings") or {}).items()
+            if isinstance(value, str) and value
+        }
         if user_input is not None:
-            bindings = _bindings_from_user_input(user_input)
-            error = validate_bindings(features, bindings)
-            if error:
-                errors["base"] = error
-            else:
+            bindings = merge_bindings_from_input(user_input, features)
+            errors = validate_bindings(features, bindings)
+            if not errors:
                 self._draft["bindings"] = bindings
                 if features["grunnvarme_schedule"]:
                     return await self.async_step_schedule()
@@ -330,9 +294,9 @@ class _FeatureStepsMixin:
                 return await self._async_finish_feature_flow()
         return self.async_show_form(
             step_id="bindings",
-            data_schema=_bindings_schema(
-                features,
-                self._draft.get("bindings"),
+            data_schema=self.add_suggested_values_to_schema(
+                _bindings_schema(features),
+                current_bindings,
             ),
             errors=errors,
         )

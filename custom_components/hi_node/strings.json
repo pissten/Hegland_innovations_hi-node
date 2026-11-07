@@ -60,13 +60,13 @@
       },
       "bindings": {
         "title": "Bindinger",
-        "description": "Koble valgte funksjoner til eksisterende Home Assistant-entiteter. Frost kan bruke temperatur fra climate eller en egen sensor.",
+        "description": "Koble funksjoner til Home Assistant-entiteter. Du kan tømme et felt med X; påkrevde felt (* ) må fylles før lagring. Skrur du av en funksjon og lagrer, slettes bindingen.",
         "data": {
-          "climate_entity": "Climate-entitet",
+          "climate_entity": "* Climate-entitet",
           "temperature_entity": "Temperatursensor",
-          "heater_power_entity": "Harvia strømbryter",
+          "heater_power_entity": "* Harvia strømbryter",
           "remaining_time_entity": "Harvia gjenstående tid (valgfri)",
-          "notify_entity": "Varslingsenhet"
+          "notify_entity": "* Varslingsenhet"
         }
       },
       "schedule": {
@@ -95,9 +95,11 @@
       "url": "Adressen må starte med http:// eller https://",
       "ip": "Fast LAN-adresse trenger IP, gateway og nettmaske",
       "switches": "Ovn, dør og lys må velges",
-      "frost_binding": "Frostvakt krever en climate-entitet eller temperatursensor",
-      "harvia_binding": "Harvia 12-timers sikring krever en strømbryter",
-      "notify_binding": "Pushvarsel krever at du velger en notify-enhet",
+      "frost_binding": "Frostvakt krever climate-entitet eller temperatursensor",
+      "harvia_binding": "Velg strømbryter for Harvia, eller skru av Harvia 12-timers sikring",
+      "notify_binding": "Velg en notify-enhet, eller skru av pushvarsel",
+      "required_binding": "Dette feltet er påkrevd",
+      "bindings_incomplete": "Fyll ut påkrevde bindinger før du går videre. Tømte felt må velges på nytt, eller skru av funksjonen.",
       "schedule": "Velg minst én ukedag og bruk klokkeslett i formatet HH:MM"
     },
     "abort": {
@@ -152,13 +154,13 @@
       },
       "bindings": {
         "title": "Bindinger",
-        "description": "Oppdater koblingene til Home Assistant-entiteter.",
+        "description": "Oppdater koblingene. Du kan tømme et felt med X; påkrevde felt (* ) må fylles før lagring. Skrur du av en funksjon og lagrer, slettes bindingen.",
         "data": {
-          "climate_entity": "Climate-entitet",
+          "climate_entity": "* Climate-entitet",
           "temperature_entity": "Temperatursensor",
-          "heater_power_entity": "Harvia strømbryter",
+          "heater_power_entity": "* Harvia strømbryter",
           "remaining_time_entity": "Harvia gjenstående tid (valgfri)",
-          "notify_entity": "Varslingsenhet"
+          "notify_entity": "* Varslingsenhet"
         }
       },
       "schedule": {
@@ -204,9 +206,11 @@
     "error": {
       "ip": "Fast LAN-adresse trenger IP, gateway og nettmaske",
       "switches": "Ovn, dør og lys må velges",
-      "frost_binding": "Frostvakt krever en climate-entitet eller temperatursensor",
-      "harvia_binding": "Harvia 12-timers sikring krever en strømbryter",
-      "notify_binding": "Pushvarsel krever at du velger en notify-enhet",
+      "frost_binding": "Frostvakt krever climate-entitet eller temperatursensor",
+      "harvia_binding": "Velg strømbryter for Harvia, eller skru av Harvia 12-timers sikring",
+      "notify_binding": "Velg en notify-enhet, eller skru av pushvarsel",
+      "required_binding": "Dette feltet er påkrevd",
+      "bindings_incomplete": "Fyll ut påkrevde bindinger før du går videre. Tømte felt må velges på nytt, eller skru av funksjonen.",
       "schedule": "Velg minst én ukedag og bruk klokkeslett i formatet HH:MM"
     },
     "abort": {
